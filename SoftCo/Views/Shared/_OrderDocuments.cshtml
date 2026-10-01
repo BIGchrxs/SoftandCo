@@ -1,0 +1,90 @@
+@model SoftCo.Models.SupplierOrder
+@using SoftCo.Models
+@using SoftCo.Data
+@{
+    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+    var docs = Model.Documents.OrderByDescending(d => d.UploadedAt).ToList();
+}
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Documents</p>
+        @if (Model.HasInvoice)
+        {
+            <span class="sc-badge sc-badge-solid">Invoice attached</span>
+        }
+        else
+        {
+            <span class="sc-badge">No invoice yet</span>
+        }
+    </div>
+
+    @if (docs.Count == 0)
+    {
+        <p class="sc-muted">Nothing attached. Upload the supplier invoice to request payment.</p>
+    }
+    else
+    {
+        <div class="sc-table-wrap">
+            <table class="sc-table">
+                <thead>
+                    <tr>
+                        <th scope="col">File</th>
+                        <th scope="col">Type</th>
+                        <th scope="col">Uploaded</th>
+                        <th scope="col" class="sc-num">Size</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in docs)
+                    {
+                        <tr>
+                            <td><a asp-controller="OrderDocuments" asp-action="Download" asp-route-id="@d.Id">@d.OriginalFileName</a></td>
+                            <td>@(d.Kind == DocumentKind.Invoice ? "Invoice" : "Other")</td>
+                            <td class="sc-muted">@d.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")<span class="sc-cell-sub">@(d.UploadedById ?? "unknown")</span></td>
+                            <td class="sc-num">@((d.SizeBytes / 1024m).ToString("N0")) KB</td>
+                            <td>
+                                @if (canEdit)
+                                {
+                                    <form method="post" asp-controller="OrderDocuments" asp-action="Delete" asp-route-id="@d.Id" class="sc-inline-form">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="sc-linkish">Remove</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (canEdit)
+    {
+        <hr class="sc-rule" />
+        <form method="post" asp-controller="Orders" asp-action="UploadDocument" asp-route-id="@Model.Id"
+              enctype="multipart/form-data" class="sc-upload">
+            @Html.AntiForgeryToken()
+
+            <div>
+                <label class="form-label" for="docFile">Attach a file</label>
+                <input class="form-control" type="file" id="docFile" name="file"
+                       accept=".pdf,.png,.jpg,.jpeg" required />
+                <span class="sc-hint">PDF, PNG or JPG, up to 10 MB.</span>
+            </div>
+
+            <div>
+                <label class="form-label" for="docKind">Type</label>
+                <select class="form-select" id="docKind" name="kind">
+                    <option value="@DocumentKind.Invoice">Invoice</option>
+                    <option value="@DocumentKind.Other">Other</option>
+                </select>
+            </div>
+
+            <div class="sc-upload-action">
+                <button type="submit" class="btn btn-secondary">Upload</button>
+            </div>
+        </form>
+    }
+</div>

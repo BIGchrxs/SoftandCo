@@ -1,0 +1,114 @@
+@model SoftCo.ViewModels.RequestPaymentViewModel
+@using SoftCo.Models
+@using SoftCo.Data
+@{
+    var canRequest = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Finance);
+    var canAddContact = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+}
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Request payment</p>
+        <span class="sc-muted">R @Model.OutstandingZar.ToString("N2") outstanding</span>
+    </div>
+
+    @if (!canRequest)
+    {
+        <p class="sc-muted">Only Finance and Admin users can send a payment request.</p>
+    }
+    else if (Model.Contacts.Count == 0)
+    {
+        <p class="sc-muted">No payment contacts yet. Add the person who approves payments below.</p>
+    }
+    else
+    {
+        <form method="post" asp-controller="Orders" asp-action="RequestPayment" asp-route-id="@Model.SupplierOrderId"
+              class="sc-request">
+            @Html.AntiForgeryToken()
+
+            <p class="sc-muted sc-request-intro">
+                Sends @Model.PoNumber — @Model.Supplier (@Model.Product) with the invoice attached.
+            </p>
+
+            <ul class="sc-contact-list">
+                @foreach (var c in Model.Contacts)
+                {
+                    <li>
+                        <label class="sc-contact">
+                            <input type="radio" name="contactId" value="@c.Id" required />
+                            <span>
+                                <strong>@c.Name</strong>
+                                <span class="sc-cell-sub">@c.Email@(string.IsNullOrWhiteSpace(c.RoleNote) ? "" : $" · {c.RoleNote}")</span>
+                            </span>
+                        </label>
+                    </li>
+                }
+            </ul>
+
+            <label class="sc-check">
+                <input type="checkbox" name="attachInvoice" value="true" checked />
+                <span>Attach the invoice file</span>
+            </label>
+
+            <div class="sc-request-action">
+                <button type="submit" class="btn btn-primary">Send payment request</button>
+                <span class="sc-hint">Delivery: @Model.DeliveryDescription</span>
+            </div>
+        </form>
+    }
+
+    @if (canAddContact)
+    {
+        <hr class="sc-rule" />
+        <details class="sc-add-contact">
+            <summary>Add a payment contact</summary>
+            <form method="post" asp-controller="Orders" asp-action="AddPaymentContact" asp-route-id="@Model.SupplierOrderId"
+                  class="sc-form-grid">
+                @Html.AntiForgeryToken()
+                <div>
+                    <label class="form-label" for="contactName">Name</label>
+                    <input class="form-control" id="contactName" name="name" required />
+                </div>
+                <div>
+                    <label class="form-label" for="contactEmail">Email</label>
+                    <input class="form-control" id="contactEmail" name="email" type="email" required />
+                </div>
+                <div>
+                    <label class="form-label" for="contactRole">Role (optional)</label>
+                    <input class="form-control" id="contactRole" name="roleNote" placeholder="Accounts payable" />
+                </div>
+                <div class="sc-upload-action">
+                    <button type="submit" class="btn btn-secondary">Add contact</button>
+                </div>
+            </form>
+        </details>
+    }
+
+    @if (Model.History.Count > 0)
+    {
+        <hr class="sc-rule" />
+        <p class="sc-label">Requests sent</p>
+        <ul class="sc-history">
+            @foreach (var r in Model.History)
+            {
+                <li>
+                    <span class="sc-history-when">@r.SentAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
+                    @if (r.Status == PaymentRequestStatus.Sent)
+                    {
+                        <strong>Sent</strong>
+                    }
+                    else
+                    {
+                        <strong class="sc-failed">Failed</strong>
+                    }
+                    <span>· @(r.PaymentContact?.Name ?? "contact removed")</span>
+                    <span class="sc-muted">· R @r.AmountZarAtRequest.ToString("N2") · by @(r.SentByName ?? "unknown")</span>
+                    @if (!string.IsNullOrWhiteSpace(r.ErrorMessage))
+                    {
+                        <span class="sc-cell-sub">@r.ErrorMessage</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>

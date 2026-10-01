@@ -16,6 +16,27 @@ public static class EnumLabels
         _ => s.ToString()
     };
 
+    /// <summary>
+    /// Local wording for the same stages. A local order is ordered, on its way, or delivered -
+    /// it never passes through testing or customs - so the shared enum is relabelled rather
+    /// than duplicated, which keeps every filter and badge working on both pages.
+    /// </summary>
+    public static string LocalLabel(this FulfilmentStatus s) => s switch
+    {
+        FulfilmentStatus.InProduction => "Ordered",
+        FulfilmentStatus.Shipping => "In transit",
+        FulfilmentStatus.Delivered => "Delivered",
+        _ => s.Label()
+    };
+
+    /// <summary>The stages a local order can actually be in.</summary>
+    public static readonly FulfilmentStatus[] LocalStages =
+    [
+        FulfilmentStatus.InProduction,
+        FulfilmentStatus.Shipping,
+        FulfilmentStatus.Delivered
+    ];
+
     public static string Label(this SettlementStatus s) => s switch
     {
         SettlementStatus.Unpaid => "Outstanding",

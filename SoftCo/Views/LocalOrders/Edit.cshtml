@@ -1,0 +1,105 @@
+@model SoftCo.ViewModels.OrderEditViewModel
+@using SoftCo.Models
+@{
+    var isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "New local order" : $"Edit {Model.PoNumber}";
+}
+
+<div class="sc-card">
+    <form method="post" asp-action="@(isNew ? "Create" : "Edit")">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+
+        <div asp-validation-summary="ModelOnly" class="sc-errors"></div>
+
+        @if (!isNew && !string.IsNullOrWhiteSpace(Model.PoNumber))
+        {
+            <p class="sc-label">Purchase order</p>
+            <p class="sc-po-display">@Model.PoNumber</p>
+            <p class="sc-hint">Allocated when the order was created and never changes.</p>
+            <hr class="sc-rule" />
+        }
+        else
+        {
+            <p class="sc-hint">A PO number is allocated automatically when you save.</p>
+        }
+
+        <p class="sc-label">Order</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="SupplierId"></label>
+                <select class="form-select" asp-for="SupplierId">
+                    <option value="">Select a supplier</option>
+                    @foreach (var s in Model.AllSuppliers)
+                    {
+                        <option value="@s.Id" selected="@(Model.SupplierId == s.Id)">@s.Name</option>
+                    }
+                </select>
+                <span asp-validation-for="SupplierId" class="sc-error"></span>
+            </div>
+
+            <div>
+                <label class="form-label" asp-for="ProductDescription"></label>
+                <input class="form-control" asp-for="ProductDescription" />
+                <span asp-validation-for="ProductDescription" class="sc-error"></span>
+            </div>
+
+            <div>
+                <label class="form-label" asp-for="FulfilmentStatus">Stage</label>
+                <select class="form-select" asp-for="FulfilmentStatus">
+                    @foreach (var fs in EnumLabels.LocalStages)
+                    {
+                        <option value="@fs" selected="@(Model.FulfilmentStatus == fs)">@fs.LocalLabel()</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <p class="sc-label">Projects</p>
+        <p class="sc-hint">Tick every project this order belongs to.</p>
+        <div class="sc-checks">
+            @foreach (var p in Model.AllProjects)
+            {
+                <label class="sc-check">
+                    <input type="checkbox" name="ProjectIds" value="@p.Id" checked="@(Model.ProjectIds.Contains(p.Id))" />
+                    <span>@p.Name</span>
+                </label>
+            }
+        </div>
+
+        <hr class="sc-rule" />
+
+        @* Local orders are bought in Rand. No currency, exchange rate or cargo-readiness date -
+           the controller fixes ZAR at a rate of 1 on the server regardless of what is posted. *@
+        <p class="sc-label">Invoice</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="InvoiceRef"></label>
+                <input class="form-control" asp-for="InvoiceRef" />
+            </div>
+            <div>
+                <label class="form-label" asp-for="InvoiceDate"></label>
+                <input class="form-control" type="date" asp-for="InvoiceDate" />
+            </div>
+            <div>
+                <label class="form-label" asp-for="InvoiceValueZar">Invoice value (ZAR)</label>
+                <input class="form-control" type="number" step="0.01" asp-for="InvoiceValueZar" />
+                <span asp-validation-for="InvoiceValueZar" class="sc-error"></span>
+            </div>
+        </div>
+
+        <div style="margin-top:1rem">
+            <label class="form-label" asp-for="Notes"></label>
+            <textarea class="form-control" asp-for="Notes" rows="3"></textarea>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <button type="submit" class="btn btn-primary">@(isNew ? "Create local order" : "Save changes")</button>
+        <a class="btn btn-secondary" asp-action="Index">Cancel</a>
+    </form>
+</div>
+
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

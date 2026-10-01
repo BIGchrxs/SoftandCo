@@ -49,3 +49,35 @@ public enum PaymentKind
     Deposit    = 0,
     Settlement = 1
 }
+
+/// <summary>
+/// Separates the two procurement models the brief describes. International orders carry a
+/// foreign currency, an exchange rate and a shipping pipeline; local orders are bought in ZAR
+/// and never clear customs. Both live in one table so payments, project links, settlement maths
+/// and the audit trail are written once rather than twice.
+/// </summary>
+public enum OrderType
+{
+    International = 0,
+    Local         = 1
+}
+
+/// <summary>
+/// What a file attached to an order actually is. Only an Invoice unlocks the request-payment
+/// action - asking finance to pay against a packing list would be meaningless.
+/// </summary>
+public enum DocumentKind
+{
+    Invoice = 0,
+    Other   = 1
+}
+
+/// <summary>
+/// Outcome of a single attempt to email a payment request. Failures are kept rather than
+/// discarded so "we asked them" can never be claimed for a message that never left.
+/// </summary>
+public enum PaymentRequestStatus
+{
+    Sent   = 0,
+    Failed = 1
+}

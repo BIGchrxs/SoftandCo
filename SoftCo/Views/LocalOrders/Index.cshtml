@@ -1,0 +1,153 @@
+@model SoftCo.ViewModels.OrderListViewModel
+@using SoftCo.Models
+@using SoftCo.Data
+@{
+    ViewData["Title"] = "Local orders";
+    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi">
+        <p class="sc-label">Invoiced</p>
+        <p class="sc-kpi-value">R @Model.TotalInvoicedZar.ToString("N2")</p>
+    </div>
+    <div class="sc-kpi">
+        <p class="sc-label">Paid</p>
+        <p class="sc-kpi-value">R @Model.TotalPaidZar.ToString("N2")</p>
+    </div>
+    <div class="sc-kpi">
+        <p class="sc-label">Outstanding</p>
+        <p class="sc-kpi-value">R @Model.TotalOutstandingZar.ToString("N2")</p>
+    </div>
+    <div class="sc-kpi">
+        <p class="sc-label">Open lines</p>
+        <p class="sc-kpi-value">@Model.OutstandingCount <span class="sc-kpi-of">of @Model.Rows.Count</span></p>
+    </div>
+</div>
+
+<div class="sc-card">
+    <form method="get" class="sc-filters">
+        <div class="sc-filter">
+            <label class="form-label" for="f-search">Search</label>
+            <input class="form-control" id="f-search" name="Search" value="@Model.Filter.Search"
+                   placeholder="PO number, product, supplier" />
+        </div>
+
+        <div class="sc-filter">
+            <label class="form-label" for="f-supplier">Supplier</label>
+            <select class="form-select" id="f-supplier" name="SupplierId">
+                <option value="">All</option>
+                @foreach (var s in Model.Suppliers)
+                {
+                    <option value="@s.Id" selected="@(Model.Filter.SupplierId == s.Id)">@s.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="sc-filter">
+            <label class="form-label" for="f-project">Project</label>
+            <select class="form-select" id="f-project" name="ProjectId">
+                <option value="">All</option>
+                @foreach (var p in Model.Projects)
+                {
+                    <option value="@p.Id" selected="@(Model.Filter.ProjectId == p.Id)">@p.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="sc-filter">
+            <label class="form-label" for="f-stage">Stage</label>
+            <select class="form-select" id="f-stage" name="Fulfilment">
+                <option value="">All</option>
+                @foreach (var fs in EnumLabels.LocalStages)
+                {
+                    <option value="@fs" selected="@(Model.Filter.Fulfilment == fs)">@fs.LocalLabel()</option>
+                }
+            </select>
+        </div>
+
+        <div class="sc-filter">
+            <label class="form-label" for="f-settle">Settlement</label>
+            <select class="form-select" id="f-settle" name="Settlement">
+                <option value="">All</option>
+                @foreach (SettlementStatus ss in Enum.GetValues<SettlementStatus>())
+                {
+                    <option value="@ss" selected="@(Model.Filter.Settlement == ss)">@ss.Label()</option>
+                }
+            </select>
+        </div>
+
+        <div class="sc-filter sc-filter-actions">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            @if (Model.Filter.IsActive)
+            {
+                <a class="btn btn-secondary" asp-action="Index">Clear</a>
+            }
+        </div>
+    </form>
+</div>
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">@Model.Rows.Count local orders</p>
+        @if (canEdit)
+        {
+            <a class="btn btn-primary" asp-action="Create">New local order</a>
+        }
+    </div>
+
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="sc-muted">No local orders match these filters.</p>
+    }
+    else
+    {
+        <div class="sc-table-wrap">
+            <table class="sc-table">
+                <thead>
+                    <tr>
+                        <th scope="col">PO number</th>
+                        <th scope="col">Supplier / product</th>
+                        <th scope="col">Project</th>
+                        <th scope="col">Stage</th>
+                        <th scope="col">Invoice</th>
+                        <th scope="col" class="sc-num">Value (ZAR)</th>
+                        <th scope="col" class="sc-num">Outstanding</th>
+                        <th scope="col">Settlement</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.Rows)
+                    {
+                        <tr>
+                            <td class="sc-po-cell">@(r.PoNumber ?? "—")</td>
+                            <td class="sc-supplier-cell">
+                                <a asp-controller="Orders" asp-action="Details" asp-route-id="@r.Id">@r.Supplier</a>
+                                <span class="sc-cell-sub">@r.Product</span>
+                            </td>
+                            <td class="sc-project-cell">@(string.IsNullOrWhiteSpace(r.Projects) ? "Not assigned" : r.Projects)</td>
+                            <td><span class="sc-delivery sc-delivery-@r.Fulfilment.ToString().ToLowerInvariant()"><span class="sc-status-dot" aria-hidden="true"></span>@r.Fulfilment.LocalLabel()</span></td>
+                            <td>@(r.InvoiceRef ?? "Not recorded")<span class="sc-cell-sub">@(r.InvoiceDate?.ToString("dd MMM yyyy") ?? "Date not recorded")</span></td>
+                            <td class="sc-num">@r.InvoiceValueZar.ToString("N2")</td>
+                            <td class="sc-num">@r.OutstandingZar.ToString("N2")</td>
+                            <td>
+                                @if (r.InvoiceValueZar <= 0) { <span class="sc-muted">Not invoiced</span> }
+                                else { @await Html.PartialAsync("_SettlementBadge", r.Settlement) }
+                            </td>
+                            <td>
+                                <a class="sc-row-link" asp-controller="Orders" asp-action="Details" asp-route-id="@r.Id">View</a>
+                                @if (canEdit)
+                                {
+                                    <a class="sc-row-link" asp-action="Edit" asp-route-id="@r.Id">Edit</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

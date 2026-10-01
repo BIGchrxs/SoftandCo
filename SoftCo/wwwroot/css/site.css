@@ -943,3 +943,107 @@ a:hover {
     .sc-table-foot { flex-wrap: wrap; gap: .3rem; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+
+/* ============================================================================
+   Local orders, documents and payment requests
+   ---------------------------------------------------------------------------- */
+
+/* PO numbers are identifiers, not prose - tabular so they stack in a column. */
+.sc-po-cell,
+.sc-po-display {
+    font-family: var(--sc-font-num);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sc-po-display {
+    font-size: 1.25rem;
+    color: var(--sc-accent);
+    margin: 0 0 0.25rem;
+}
+
+/* --- Upload row ---------------------------------------------------------- */
+
+.sc-upload {
+    display: grid;
+    grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) auto;
+    gap: 1rem;
+    align-items: end;
+}
+
+.sc-upload-action { display: flex; align-items: end; }
+
+@media (max-width: 700px) {
+    .sc-upload { grid-template-columns: 1fr; }
+}
+
+/* A button that has to sit inside a form but should read as a link. */
+.sc-inline-form { display: inline; }
+
+.sc-linkish {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--sc-accent);
+    font-family: var(--sc-font-sans);
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--sc-line-strong);
+}
+
+.sc-linkish:hover { color: var(--sc-accent-strong); }
+
+/* --- Request payment ----------------------------------------------------- */
+
+.sc-request-intro { font-size: 0.85rem; }
+
+.sc-contact-list {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.sc-contact {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--sc-line);
+    border-radius: var(--sc-radius);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.sc-contact:hover { border-color: var(--sc-line-strong); background-color: var(--sc-hover); }
+
+.sc-contact input { accent-color: var(--sc-accent); margin-top: 0.3rem; }
+
+.sc-contact span { display: block; }
+
+.sc-request-action {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.sc-request-action .sc-hint { margin-top: 0; }
+
+.sc-add-contact summary {
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: var(--sc-tracking-label);
+    text-transform: uppercase;
+    color: var(--sc-accent-soft);
+    margin-bottom: 0.75rem;
+}
+
+.sc-add-contact summary:hover { color: var(--sc-accent); }
+
+/* A failed send is stated plainly rather than coloured alarmingly - it is a fact
+   to act on, not an emergency. */
+.sc-failed { color: var(--sc-accent); }

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <!-- Source is linked rather than project-referenced, matching SoftCo.ExchangeRates.Tests:
+         these units are deliberately free of EF and ASP.NET so they can be exercised on their own. -->
+    <Compile Include="../../SoftCo/Services/PoNumberFormat.cs" Link="Services/PoNumberFormat.cs" />
+    <Compile Include="../../SoftCo/Services/Documents/UploadValidator.cs" Link="Services/UploadValidator.cs" />
+  </ItemGroup>
+</Project>

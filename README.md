@@ -31,11 +31,44 @@ Use HTTPS at `https://localhost:7027` because authentication cookies require HTT
 
 If you set `ConnectionStrings:DefaultConnection` in .NET user secrets or `ConnectionStrings__DefaultConnection` in your environment, it overrides the development fallback: use port 5433 and the credentials belonging to the SoftCo database. Changing `POSTGRES_PASSWORD` in `.env` does not change a password already stored in a PostgreSQL volume.
 
+## Local orders, PO numbers and payment requests
+
+Local purchases share the orders table with international ones and are separated by an
+`OrderType` flag, so payments, project links, settlement calculations and the audit trail are the
+same code for both. Local orders are fixed to ZAR at a rate of 1 on the server, whatever the form
+posts, and have no cargo-readiness date.
+
+Every order carries an internal `PoNumber` such as `PO-2026-0001`, allocated on create from the
+PostgreSQL sequence `po_number_seq` and never changed afterwards. A sequence is used rather than
+`MAX(PoNumber) + 1` because `nextval` is atomic under concurrency and never rolls back, so a
+number cannot be issued twice. The migration backfills existing orders and advances the sequence
+past them. Numbers can therefore skip; that is expected.
+
+Attach the supplier invoice on the order page to unlock **Request payment**. Uploads are limited
+to PDF, PNG and JPG up to 10 MB, checked against an extension allow-list *and* the file's leading
+bytes, so a renamed executable is rejected. Files are stored under `App_Data/order-documents`
+outside `wwwroot` under a server-generated GUID name and served only through an authenticated
+action.
+
+Payment requests go to contacts in the shared address book at `/PaymentContacts`. Each attempt
+writes a `PaymentRequest` row whether it succeeds or fails, so a failed send can never be mistaken
+for one that went out.
+
+In Development the composed email is written to `App_Data/sent-email` as a `.eml` file instead of
+being sent, so the whole flow can be exercised without credentials. Supply `Email__Host`,
+`Email__User`, `Email__Password` and `Email__FromAddress` through user secrets or the environment
+to send for real; no code changes.
+
 ## Verification
 
 ```powershell
 dotnet build SoftCo/SoftCo.csproj
+dotnet run --project tests/SoftCo.ExchangeRates.Tests
+dotnet run --project tests/SoftCo.Orders.Tests
 ```
+
+`tests/SoftCo.Orders.Tests` covers PO number formatting and the upload validator, including a
+renamed executable, oversize files, and filenames shaped like path traversal.
 
 `tests/order-tracker.smoke.cjs` runs real browser checks through login, search, filtering, empty results, payment-column expansion, supplier/project navigation and mobile layout. It requires Playwright with Microsoft Edge and a disposable database populated with the development seed.
 

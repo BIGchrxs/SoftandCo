@@ -14,6 +14,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<OrderProject> OrderProjects => Set<OrderProject>();
     public DbSet<OrderPayment> OrderPayments => Set<OrderPayment>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<OrderDocument> OrderDocuments => Set<OrderDocument>();
+    public DbSet<PaymentContact> PaymentContacts => Set<PaymentContact>();
+    public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -47,6 +50,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(x => x.FulfilmentStatus);
             e.HasIndex(x => x.InvoiceRef);
             e.HasIndex(x => x.InvoiceDate);
+
+            // The internal reference must be unique for the life of the system. Filtered so the
+            // column can stay nullable while a row is being created.
+            e.HasIndex(x => x.PoNumber).IsUnique().HasFilter("\"PoNumber\" IS NOT NULL");
+
+            // Both grids filter on this first, so it leads every query.
+            e.HasIndex(x => x.OrderType);
         });
 
         // --- OrderProject (join) -------------------------------------------------------------
@@ -74,6 +84,44 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
              .OnDelete(DeleteBehavior.Cascade);
 
             e.HasIndex(x => x.PaidDate);
+        });
+
+        // --- OrderDocument -------------------------------------------------------------------
+        b.Entity<OrderDocument>(e =>
+        {
+            e.HasOne(x => x.SupplierOrder)
+             .WithMany(o => o.Documents)
+             .HasForeignKey(x => x.SupplierOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => new { x.SupplierOrderId, x.Kind });
+        });
+
+        // --- PaymentContact ------------------------------------------------------------------
+        b.Entity<PaymentContact>(e =>
+        {
+            // One address, one contact - stops the same person being added three times with
+            // three spellings of their name.
+            e.HasIndex(x => x.Email).IsUnique();
+            e.HasIndex(x => x.IsActive);
+        });
+
+        // --- PaymentRequest ------------------------------------------------------------------
+        b.Entity<PaymentRequest>(e =>
+        {
+            e.HasOne(x => x.SupplierOrder)
+             .WithMany(o => o.PaymentRequests)
+             .HasForeignKey(x => x.SupplierOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: deleting a contact must never erase the evidence that a
+            // request was sent to them.
+            e.HasOne(x => x.PaymentContact)
+             .WithMany()
+             .HasForeignKey(x => x.PaymentContactId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(x => x.SentAt);
         });
 
         // --- AuditEvent ----------------------------------------------------------------------

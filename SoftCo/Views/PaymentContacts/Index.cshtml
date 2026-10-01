@@ -1,0 +1,65 @@
+@model List<SoftCo.Models.PaymentContact>
+@using SoftCo.Data
+@{
+    ViewData["Title"] = "Payment contacts";
+    var counts = ViewBag.RequestCounts as Dictionary<int, int> ?? new();
+    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">@Model.Count(c => c.IsActive) active</p>
+        @if (canEdit)
+        {
+            <a class="btn btn-primary" asp-action="Create">New contact</a>
+        }
+    </div>
+
+    <p class="sc-muted">
+        People a payment request can be sent to. Keeping them here means an address is typed once,
+        by someone who knows it, rather than re-typed on every invoice.
+    </p>
+
+    @if (Model.Count == 0)
+    {
+        <p class="sc-muted">No contacts yet.</p>
+    }
+    else
+    {
+        <div class="sc-table-wrap">
+            <table class="sc-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Email</th>
+                        <th scope="col">Role</th>
+                        <th scope="col" class="sc-num">Requests sent</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model)
+                    {
+                        <tr>
+                            <td>
+                                @c.Name
+                                @if (!c.IsActive) { <span class="sc-badge">Inactive</span> }
+                            </td>
+                            <td class="sc-muted">@c.Email</td>
+                            <td class="sc-muted">@(c.RoleNote ?? "—")</td>
+                            <td class="sc-num">@(counts.TryGetValue(c.Id, out var n) ? n : 0)</td>
+                            <td>
+                                @if (canEdit)
+                                {
+                                    <a class="sc-row-link" asp-action="Edit" asp-route-id="@c.Id">Edit</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

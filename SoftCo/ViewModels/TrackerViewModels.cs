@@ -20,6 +20,8 @@ public class OrderFilterViewModel
 public class OrderRowViewModel
 {
     public int Id { get; set; }
+    public string? PoNumber { get; set; }
+    public OrderType OrderType { get; set; }
     public string Supplier { get; set; } = "";
     public string Product { get; set; } = "";
     public string Projects { get; set; } = "";
@@ -54,6 +56,12 @@ public class OrderListViewModel
 public class OrderEditViewModel
 {
     public int Id { get; set; }
+
+    /// <summary>Read-only once allocated; shown so the user can quote it.</summary>
+    public string? PoNumber { get; set; }
+
+    /// <summary>Set by the controller, not the form - a Local order can never post itself International.</summary>
+    public OrderType OrderType { get; set; } = OrderType.International;
 
     [Required, Display(Name = "Supplier")]
     public int SupplierId { get; set; }
@@ -128,4 +136,25 @@ public class LoginViewModel
     public string Password { get; set; } = "";
 
     public string? ReturnUrl { get; set; }
+}
+
+/// <summary>Panel shown on an order once an invoice is attached.</summary>
+public class RequestPaymentViewModel
+{
+    public int SupplierOrderId { get; set; }
+    public string PoNumber { get; set; } = "";
+    public string Supplier { get; set; } = "";
+    public string Product { get; set; } = "";
+    public decimal OutstandingZar { get; set; }
+
+    /// <summary>Active contacts to choose from.</summary>
+    public List<PaymentContact> Contacts { get; set; } = [];
+
+    /// <summary>Requests already sent for this order, newest first.</summary>
+    public List<PaymentRequest> History { get; set; } = [];
+
+    /// <summary>Where mail is going right now, e.g. "written to App_Data/sent-email".</summary>
+    public string DeliveryDescription { get; set; } = "";
+
+    public bool AttachInvoice { get; set; } = true;
 }

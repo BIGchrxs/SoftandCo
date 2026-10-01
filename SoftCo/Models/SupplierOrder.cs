@@ -11,6 +11,18 @@ public class SupplierOrder
 {
     public int Id { get; set; }
 
+    /// <summary>
+    /// Internal purchase-order reference, e.g. PO-2026-0001. Generated from a database sequence
+    /// when the order is first saved and never changed afterwards: it is the one identifier
+    /// Soft &amp; Co. own, as opposed to <see cref="InvoiceRef"/>, which belongs to the supplier
+    /// and can be reissued by them at any time.
+    /// </summary>
+    [StringLength(20)]
+    public string? PoNumber { get; set; }
+
+    /// <summary>International (foreign currency, shipped) or Local (ZAR, no clearance).</summary>
+    public OrderType OrderType { get; set; } = OrderType.International;
+
     public int SupplierId { get; set; }
     public Supplier? Supplier { get; set; }
 
@@ -67,6 +79,8 @@ public class SupplierOrder
 
     public ICollection<OrderProject> OrderProjects { get; set; } = new List<OrderProject>();
     public ICollection<OrderPayment> Payments { get; set; } = new List<OrderPayment>();
+    public ICollection<OrderDocument> Documents { get; set; } = new List<OrderDocument>();
+    public ICollection<PaymentRequest> PaymentRequests { get; set; } = new List<PaymentRequest>();
 
     // --- Derived -----------------------------------------------------------------------------
 
@@ -87,6 +101,13 @@ public class SupplierOrder
     /// Never stored. A settlement status that can disagree with the payments beside it is exactly
     /// the spreadsheet failure this system exists to remove.
     /// </summary>
+    /// <summary>
+    /// Gates the request-payment action: there is no point asking finance to pay until the
+    /// supplier's invoice is actually on the record. Requires Documents to be loaded.
+    /// </summary>
+    [NotMapped]
+    public bool HasInvoice => Documents.Any(d => d.Kind == DocumentKind.Invoice);
+
     [NotMapped]
     public SettlementStatus SettlementStatus =>
         InvoiceValueForeign <= 0m || PaidForeign <= 0m ? SettlementStatus.Unpaid

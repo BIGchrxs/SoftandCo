@@ -39,6 +39,12 @@ services:
       Seed__AdminPassword: "${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in a .env file - copy .env.example to .env and fill it in}"
       Seed__AdminEmail: "${SEED_ADMIN_EMAIL:-admin@softandco.co.za}"
       ExchangeRates__ApiKey: "${EXCHANGE_RATE_API_KEY:-}"
+      Email__Host: "${EMAIL_HOST:-}"
+      Email__Port: "${EMAIL_PORT:-587}"
+      Email__User: "${EMAIL_USER:-}"
+      Email__Password: "${EMAIL_PASSWORD:-}"
+      Email__FromAddress: "${EMAIL_FROM_ADDRESS:-noreply@softandco.co.za}"
+      Email__FromName: "${EMAIL_FROM_NAME:-Soft & Co.}"
     ports:
       - "5280:8080"
     networks:

@@ -114,6 +114,7 @@
             <table class="sc-table sc-order-table">
                 <thead>
                     <tr>
+                        <th scope="col">PO number</th>
                         <th scope="col">Supplier / product</th>
                         <th scope="col">Project</th>
                         <th scope="col">Cargo ready</th>
@@ -131,6 +132,7 @@
                     @foreach (var r in Model.Rows)
                     {
                         <tr>
+                            <td class="sc-po-cell">@(r.PoNumber ?? "—")</td>
                             <td class="sc-supplier-cell"><a asp-action="Details" asp-route-id="@r.Id">@r.Supplier</a><span class="sc-cell-sub">@r.Product</span></td>
                             <td class="sc-project-cell">@(string.IsNullOrWhiteSpace(r.Projects) ? "Not assigned" : r.Projects)</td>
                             <td class="sc-date-cell">@(r.CargoReadiness?.ToString("dd MMM yyyy") ?? "Not confirmed")</td>

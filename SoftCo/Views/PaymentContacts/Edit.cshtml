@@ -1,0 +1,47 @@
+@model SoftCo.Models.PaymentContact
+@{
+    var isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "New payment contact" : "Edit payment contact";
+}
+
+<div class="sc-card">
+    <form method="post" asp-action="@(isNew ? "Create" : "Edit")">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="ModelOnly" class="sc-errors"></div>
+
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="Name">Name</label>
+                <input class="form-control" asp-for="Name" />
+                <span asp-validation-for="Name" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="Email">Email</label>
+                <input class="form-control" type="email" asp-for="Email" />
+                <span asp-validation-for="Email" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="RoleNote">Role</label>
+                <input class="form-control" asp-for="RoleNote" placeholder="Accounts payable" />
+            </div>
+        </div>
+
+        <div style="margin-top:1rem">
+            <label class="sc-check">
+                <input type="checkbox" asp-for="IsActive" />
+                <span>Active</span>
+            </label>
+            <p class="sc-hint">
+                Deactivate rather than delete. Past payment requests keep pointing at this contact,
+                so the history stays readable after someone leaves.
+            </p>
+        </div>
+
+        <hr class="sc-rule" />
+        <button type="submit" class="btn btn-primary">@(isNew ? "Add contact" : "Save changes")</button>
+        <a class="btn btn-secondary" asp-action="Index">Cancel</a>
+    </form>
+</div>
+
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using SoftCo.Data;
 using SoftCo.Models;
 using SoftCo.Services;
+using SoftCo.Services.Documents;
+using SoftCo.Services.Email;
 using SoftCo.Services.ExchangeRates;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -62,6 +64,22 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditService, AuditService>();
+
+// Purchase-order numbers come from a Postgres sequence, so this needs the request's DbContext.
+builder.Services.AddScoped<IPoNumberGenerator, PoNumberGenerator>();
+
+// Order attachments live under App_Data, outside wwwroot.
+builder.Services.AddSingleton<IDocumentStore, DocumentStore>();
+
+// Email: in Development the composed message is written to App_Data/sent-email instead of being
+// sent, so the flow can be exercised end to end without credentials and without the risk of
+// mailing a real supplier from a developer's machine. Production uses SMTP with the same
+// interface, so no calling code changes when credentials are supplied.
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+if (builder.Environment.IsDevelopment())
+    builder.Services.AddSingleton<IEmailService, FileDropEmailService>();
+else
+    builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
 
 builder.Services.Configure<ExchangeRateOptions>(builder.Configuration.GetSection(ExchangeRateOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);

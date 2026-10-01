@@ -142,4 +142,13 @@
     }
 </div>
 
+@await Html.PartialAsync("_OrderDocuments", Model)
+
+@* The request-payment panel only renders once an invoice is on the record - there is nothing
+   to ask anyone to pay until then. *@
+@if (Model.HasInvoice && ViewBag.RequestPayment is SoftCo.ViewModels.RequestPaymentViewModel rp)
+{
+    @await Html.PartialAsync("_RequestPayment", rp)
+}
+
 <p><a asp-action="Index">← Back to tracker</a></p>
