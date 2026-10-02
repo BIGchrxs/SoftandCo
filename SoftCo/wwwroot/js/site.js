@@ -29,3 +29,17 @@ if (paymentToggle && ordersTable) {
 document.querySelectorAll('.sc-nav a.active').forEach(function (link) {
     link.setAttribute('aria-current', 'page');
 });
+
+// Picking a local supplier switches the default currency to ZAR - a South African supplier
+// invoicing in yuan is almost always a mis-click. Only moves it off a foreign default; if the
+// user has deliberately chosen a currency after switching, their choice stands.
+document.addEventListener('change', function (e) {
+    if (!e.target.matches('#supplierOrigin')) return;
+
+    var currency = document.getElementById('supplierCurrency');
+    if (!currency) return;
+
+    if (e.target.value === 'Local' && currency.value !== 'ZAR') {
+        currency.value = 'ZAR';
+    }
+});

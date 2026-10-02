@@ -1047,3 +1047,48 @@ a:hover {
 /* A failed send is stated plainly rather than coloured alarmingly - it is a fact
    to act on, not an emergency. */
 .sc-failed { color: var(--sc-accent); }
+
+/* --- Supplier origin ------------------------------------------------------ */
+
+/* Two filter axes stacked above the table, each labelled so it is clear they
+   narrow the list together rather than replacing one another. */
+.sc-filter-rows {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.sc-tab-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+}
+
+.sc-tab-label {
+    font-size: 0.62rem;
+    font-weight: 500;
+    letter-spacing: var(--sc-tracking-label);
+    text-transform: uppercase;
+    color: var(--sc-ink-soft);
+    min-width: 4.5rem;
+}
+
+/* Outline for local, filled for international - the same quiet convention the
+   settlement badges use, rather than a second colour scale. */
+.sc-origin {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 500;
+    letter-spacing: var(--sc-tracking-label);
+    text-transform: uppercase;
+    padding: 0.2rem 0.6rem;
+    border: 1px solid var(--sc-line-strong);
+    border-radius: var(--sc-radius-pill);
+    white-space: nowrap;
+    color: var(--sc-accent);
+}
+
+.sc-origin-international {
+    background-color: rgba(107, 70, 54, 0.08);
+    border-color: var(--sc-accent);
+}

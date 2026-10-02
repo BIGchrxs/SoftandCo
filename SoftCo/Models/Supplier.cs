@@ -11,6 +11,12 @@ public class Supplier
 
     public SupplierType Type { get; set; } = SupplierType.Manufacturer;
 
+    /// <summary>
+    /// Local (South African, invoices in Rand) or international (overseas, ships and clears).
+    /// Separate from <see cref="Type"/>: a freight agent can be either, and so can a manufacturer.
+    /// </summary>
+    public SupplierOrigin Origin { get; set; } = SupplierOrigin.International;
+
     [StringLength(100)]
     public string? Country { get; set; }
 

@@ -6,6 +6,8 @@
     ViewData["Description"] = "The people and partners behind every order.";
     var counts = ViewBag.OrderCounts as Dictionary<int, int> ?? new();
     var type = ViewBag.Type as SupplierType?;
+    var origin = ViewBag.Origin as SupplierOrigin?;
+    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
 }
 
 @await Html.PartialAsync("_Flash")
@@ -13,17 +15,35 @@
 <div class="sc-kpis">
     <div class="sc-kpi"><p class="sc-label">Supplier partners</p><p class="sc-kpi-value">@Model.Count.ToString("D2")</p><p class="sc-kpi-caption">Partners in this view</p></div>
     <div class="sc-kpi"><p class="sc-label">Supplier orders</p><p class="sc-kpi-value">@Model.Sum(s => counts.GetValueOrDefault(s.Id)).ToString("D2")</p><p class="sc-kpi-caption">Orders linked to these partners</p></div>
-    <div class="sc-kpi"><p class="sc-label">Service providers</p><p class="sc-kpi-value">@Model.Count(s => s.Type == SupplierType.ServiceProvider).ToString("D2")</p><p class="sc-kpi-caption">Freight and logistics partners in this view</p></div>
+    <div class="sc-kpi"><p class="sc-label">Local</p><p class="sc-kpi-value">@Model.Count(s => s.Origin == SupplierOrigin.Local).ToString("D2")</p><p class="sc-kpi-caption">South African partners in this view</p></div>
+    <div class="sc-kpi"><p class="sc-label">International</p><p class="sc-kpi-value">@Model.Count(s => s.Origin == SupplierOrigin.International).ToString("D2")</p><p class="sc-kpi-caption">Overseas partners in this view</p></div>
 </div>
 
 <div class="sc-card">
     <div class="sc-card-head">
-        <div class="sc-tabs">
-            <a class="@(type == null ? "active" : "")" asp-action="Index">All</a>
-            <a class="@(type == SupplierType.Manufacturer ? "active" : "")" asp-action="Index" asp-route-type="@SupplierType.Manufacturer">Manufacturers</a>
-            <a class="@(type == SupplierType.ServiceProvider ? "active" : "")" asp-action="Index" asp-route-type="@SupplierType.ServiceProvider">Service providers</a>
+        @* Two independent axes. Each tab row carries the other row's current selection through,
+           so narrowing by origin does not silently clear the type filter. *@
+        <div class="sc-filter-rows">
+            <div class="sc-tab-row">
+                <span class="sc-tab-label">Origin</span>
+                <div class="sc-tabs">
+                    <a class="@(origin == null ? "active" : "")" asp-action="Index" asp-route-type="@type">All</a>
+                    <a class="@(origin == SupplierOrigin.Local ? "active" : "")" asp-action="Index" asp-route-type="@type" asp-route-origin="@SupplierOrigin.Local">Local</a>
+                    <a class="@(origin == SupplierOrigin.International ? "active" : "")" asp-action="Index" asp-route-type="@type" asp-route-origin="@SupplierOrigin.International">International</a>
+                </div>
+            </div>
+
+            <div class="sc-tab-row">
+                <span class="sc-tab-label">Type</span>
+                <div class="sc-tabs">
+                    <a class="@(type == null ? "active" : "")" asp-action="Index" asp-route-origin="@origin">All</a>
+                    <a class="@(type == SupplierType.Manufacturer ? "active" : "")" asp-action="Index" asp-route-origin="@origin" asp-route-type="@SupplierType.Manufacturer">Manufacturers</a>
+                    <a class="@(type == SupplierType.ServiceProvider ? "active" : "")" asp-action="Index" asp-route-origin="@origin" asp-route-type="@SupplierType.ServiceProvider">Service providers</a>
+                </div>
+            </div>
         </div>
-        @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance))
+
+        @if (canEdit)
         {
             <a class="btn btn-primary" asp-action="Create">New supplier</a>
         }
@@ -33,12 +53,13 @@
         <table class="sc-table">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Country</th>
-                    <th>Currency</th>
-                    <th class="sc-num">Orders</th>
-                    <th></th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Origin</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Country</th>
+                    <th scope="col">Currency</th>
+                    <th scope="col" class="sc-num">Orders</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -46,18 +67,19 @@
             {
                 <tr>
                     <td><a asp-controller="Orders" asp-action="Index" asp-route-SupplierId="@s.Id">@s.Name</a> @if (!s.IsActive) { <span class="sc-badge">Inactive</span> }</td>
+                    <td><span class="sc-origin sc-origin-@s.Origin.ToString().ToLowerInvariant()">@s.Origin.Label()</span></td>
                     <td class="sc-muted">@s.Type.Label()</td>
                     <td class="sc-muted">@(s.Country ?? "—")</td>
                     <td>@s.DefaultCurrencyCode</td>
                     <td class="sc-num">@(counts.TryGetValue(s.Id, out var c) ? c : 0)</td>
                     <td>
-                        @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance))
+                        @if (canEdit)
                         { <a asp-action="Edit" asp-route-id="@s.Id" aria-label="Edit @s.Name">Edit</a> }
                     </td>
                 </tr>
             }
             @if (Model.Count == 0)
-            { <tr><td colspan="6" class="sc-empty">No suppliers in this view. Choose another supplier type or add a supplier.</td></tr> }
+            { <tr><td colspan="7" class="sc-empty">No suppliers in this view. Choose another origin or type, or add a supplier.</td></tr> }
             </tbody>
         </table>
     </div>

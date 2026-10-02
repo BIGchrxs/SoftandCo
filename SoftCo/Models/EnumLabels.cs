@@ -52,6 +52,13 @@ public static class EnumLabels
         _ => t.ToString()
     };
 
+    public static string Label(this SupplierOrigin o) => o switch
+    {
+        SupplierOrigin.Local => "Local",
+        SupplierOrigin.International => "International",
+        _ => o.ToString()
+    };
+
     public static string Label(this PaymentKind k) => k switch
     {
         PaymentKind.Deposit => "Deposit",

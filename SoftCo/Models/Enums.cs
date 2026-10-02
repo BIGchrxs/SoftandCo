@@ -81,3 +81,18 @@ public enum PaymentRequestStatus
     Sent   = 0,
     Failed = 1
 }
+
+/// <summary>
+/// Where a supplier sits relative to Soft &amp; Co. International suppliers invoice in a foreign
+/// currency and their goods ship and clear customs; local suppliers invoice in Rand and deliver
+/// by road.
+///
+/// Ordered so International is 0, matching <see cref="OrderType"/> and meaning the existing
+/// supplier register - every one of them a Chinese manufacturer - lands on the correct value
+/// without a data fix.
+/// </summary>
+public enum SupplierOrigin
+{
+    International = 0,
+    Local         = 1
+}

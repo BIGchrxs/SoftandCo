@@ -17,12 +17,19 @@ public class SuppliersController : Controller
 
     public SuppliersController(AppDbContext db) => _db = db;
 
-    public async Task<IActionResult> Index(SupplierType? type)
+    /// <summary>
+    /// Two independent filters. Type answers "what do they do?" (manufacturer or freight agent);
+    /// Origin answers "where are they?" (local or international). They compose rather than
+    /// replace each other, so a view can be narrowed to local freight agents.
+    /// </summary>
+    public async Task<IActionResult> Index(SupplierType? type, SupplierOrigin? origin)
     {
         var q = _db.Suppliers.AsNoTracking().AsQueryable();
         if (type is SupplierType t) q = q.Where(s => s.Type == t);
+        if (origin is SupplierOrigin o) q = q.Where(s => s.Origin == o);
 
         ViewBag.Type = type;
+        ViewBag.Origin = origin;
         ViewBag.OrderCounts = await _db.SupplierOrders.AsNoTracking()
             .GroupBy(o => o.SupplierId)
             .Select(g => new { g.Key, Count = g.Count() })
@@ -65,6 +72,7 @@ public class SuppliersController : Controller
 
         s.Name = model.Name;
         s.Type = model.Type;
+        s.Origin = model.Origin;
         s.Country = model.Country;
         s.DefaultCurrencyCode = model.DefaultCurrencyCode.ToUpperInvariant();
         s.ContactName = model.ContactName;

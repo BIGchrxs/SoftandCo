@@ -18,6 +18,16 @@
                 <span asp-validation-for="Name" class="sc-error"></span>
             </div>
             <div>
+                <label class="form-label" asp-for="Origin">Origin</label>
+                <select class="form-select" asp-for="Origin" id="supplierOrigin">
+                    @foreach (SupplierOrigin o in Enum.GetValues<SupplierOrigin>())
+                    {
+                        <option value="@o" selected="@(Model.Origin == o)">@o.Label()</option>
+                    }
+                </select>
+                <span class="sc-hint">Local suppliers invoice in Rand; international ones ship and clear customs.</span>
+            </div>
+            <div>
                 <label class="form-label" asp-for="Type">Type</label>
                 <select class="form-select" asp-for="Type">
                     @foreach (SupplierType t in Enum.GetValues<SupplierType>())
@@ -32,7 +42,8 @@
             </div>
             <div>
                 <label class="form-label" asp-for="DefaultCurrencyCode">Default currency</label>
-                <select class="form-select" asp-for="DefaultCurrencyCode">
+                <select class="form-select" asp-for="DefaultCurrencyCode" id="supplierCurrency">
+                    <option value="ZAR" selected="@(Model.DefaultCurrencyCode == "ZAR")">ZAR</option>
                     <option value="CNY" selected="@(Model.DefaultCurrencyCode == "CNY")">CNY</option>
                     <option value="USD" selected="@(Model.DefaultCurrencyCode == "USD")">USD</option>
                     <option value="EUR" selected="@(Model.DefaultCurrencyCode == "EUR")">EUR</option>
