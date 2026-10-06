@@ -3,6 +3,7 @@
 @{
     var a = Model.Approval;
     var o = Model.Order;
+    var pr = Model.PaymentRequest;
     ViewData["Title"] = $"Approve {o.PoNumber}";
     var open = a.Status == ApprovalStatus.Pending;
 }
@@ -16,7 +17,10 @@
             <h2 style="margin:0">@o.PoNumber</h2>
         </div>
         <div class="sc-actions">
-            <a class="btn btn-secondary" asp-controller="PurchaseOrders" asp-action="Preview" asp-route-id="@o.Id">Open the purchase order</a>
+            @if (!Model.IsPaymentRelease)
+            {
+                <a class="btn btn-secondary" asp-controller="PurchaseOrders" asp-action="Preview" asp-route-id="@o.Id">Open the purchase order</a>
+            }
             <a class="btn btn-secondary" asp-controller="Orders" asp-action="Details" asp-route-id="@o.Id">Full order record</a>
         </div>
     </div>
@@ -28,6 +32,13 @@
         <div><dt>Currency</dt><dd>@o.CurrencyCode at @o.ExchangeRate.ToString("N6")</dd></div>
         <div><dt>Invoice value</dt><dd>@o.InvoiceValueForeign.ToString("N2") @o.CurrencyCode</dd></div>
         <div><dt>Cargo readiness</dt><dd>@(o.CargoReadinessDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
+        @if (pr is not null)
+        {
+            @* The decision is about paying a named person a named amount, so both are on the page. *@
+            <div><dt>Pay to</dt><dd>@pr.PaymentContact?.Name<span class="sc-cell-sub">@pr.PaymentContact?.Email</span></dd></div>
+            <div><dt>Invoice ref</dt><dd>@(o.InvoiceRef ?? "—")</dd></div>
+            <div><dt>Invoice attached</dt><dd>@(pr.AttachInvoice ? "Yes" : "No")</dd></div>
+        }
         <div><dt>Raised by</dt><dd>@a.RequestedByName<span class="sc-cell-sub">@a.RequestedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></dd></div>
     </dl>
 
@@ -45,10 +56,21 @@
     <div class="sc-approve-amount">
         <p class="sc-label">You are approving</p>
         <p class="sc-approve-value">R @a.AmountZarAtRequest.ToString("N2")</p>
-        <p class="sc-muted">
-            Approving commits Soft &amp; Co to this amount with @o.Supplier?.Name.
-            If the order is changed afterwards it will have to be approved again before it can be issued.
-        </p>
+        @if (Model.IsPaymentRelease)
+        {
+            <p class="sc-muted">
+                Approving lets staff send a payment request to @pr?.PaymentContact?.Name.
+                Nothing reaches them until it is released. If the outstanding balance changes before
+                then, it comes back to you rather than going out at the old figure.
+            </p>
+        }
+        else
+        {
+            <p class="sc-muted">
+                Approving commits Soft &amp; Co to this amount with @o.Supplier?.Name.
+                If the order is changed afterwards it will have to be approved again before it can be issued.
+            </p>
+        }
     </div>
 </div>
 

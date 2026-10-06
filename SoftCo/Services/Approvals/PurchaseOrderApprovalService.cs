@@ -235,17 +235,9 @@ public sealed class PurchaseOrderApprovalService : IPurchaseOrderApprovalService
            .AsSplitQuery()
            .FirstOrDefaultAsync(o => o.Id == orderId, ct);
 
-    private void Decide(Approval approval, ApprovalStatus status, Actor actor, string? reason)
-    {
-        approval.Status = status;
-        approval.DecidedAt = _clock.GetUtcNow().UtcDateTime;
-        approval.DecidedById = actor.Id;
-        approval.DecidedByName = actor.Name;
-        approval.DecisionReason = Trim(reason);
-    }
+    /// <summary>Shared with payment releases, so the two cannot drift apart on how a decision is recorded.</summary>
+    private void Decide(Approval approval, ApprovalStatus status, Actor actor, string? reason) =>
+        ApprovalDecision.Record(approval, status, actor, reason, _clock.GetUtcNow().UtcDateTime);
 
-    private static string? Trim(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null
-        : value.Trim() is { Length: > 1000 } long_ ? long_[..1000]
-        : value.Trim();
+    private static string? Trim(string? value) => ApprovalDecision.Trim(value);
 }

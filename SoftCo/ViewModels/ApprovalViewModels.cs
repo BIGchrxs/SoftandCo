@@ -39,6 +39,14 @@ public class ApprovalReviewViewModel
     public Approval Approval { get; set; } = null!;
     public SupplierOrder Order { get; set; } = null!;
 
+    /// <summary>
+    /// Set only for a payment release. The order is still carried, because the decision is about
+    /// money owed on that order and the approver needs to see which one.
+    /// </summary>
+    public PaymentRequest? PaymentRequest { get; set; }
+
+    public bool IsPaymentRelease => Approval.Kind == ApprovalKind.PaymentRelease;
+
     public string Projects { get; set; } = "";
 
     /// <summary>

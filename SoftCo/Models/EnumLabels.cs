@@ -59,6 +59,24 @@ public static class EnumLabels
         _ => o.ToString()
     };
 
+    public static string Label(this PaymentRequestStatus s) => s switch
+    {
+        PaymentRequestStatus.Sent => "Sent",
+        PaymentRequestStatus.Failed => "Failed",
+        PaymentRequestStatus.NotSent => "Not sent",
+        _ => s.ToString()
+    };
+
+    public static string Label(this PaymentReleaseStatus s) => s switch
+    {
+        PaymentReleaseStatus.PendingApproval => "Awaiting FD approval",
+        PaymentReleaseStatus.Approved => "Approved to release",
+        PaymentReleaseStatus.Rejected => "Rejected",
+        PaymentReleaseStatus.Released => "Released",
+        PaymentReleaseStatus.Withdrawn => "Withdrawn",
+        _ => s.ToString()
+    };
+
     public static string Label(this PoApprovalStatus s) => s switch
     {
         PoApprovalStatus.Draft => "Draft",

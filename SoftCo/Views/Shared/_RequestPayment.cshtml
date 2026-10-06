@@ -1,24 +1,84 @@
 @model SoftCo.ViewModels.RequestPaymentViewModel
 @using SoftCo.Models
-@using SoftCo.Data
 @{
     var canRequest = User.CanRecordPayments();
     var canAddContact = User.CanEditOrders();
+
+    // The one request that is mid-workflow, if there is one. Everything else is history.
+    var live = Model.History.FirstOrDefault(r =>
+        r.ReleaseStatus is PaymentReleaseStatus.PendingApproval or PaymentReleaseStatus.Approved);
+
+    var past = Model.History.Where(r => r != live).ToList();
 }
 
-<div class="sc-card">
+<div class="sc-card @(live is not null ? "sc-notice" : "")">
     <div class="sc-card-head">
         <p class="sc-label" style="margin-bottom:0">Request payment</p>
         <span class="sc-muted">R @Model.OutstandingZar.ToString("N2") outstanding</span>
     </div>
 
-    @if (!canRequest)
+    @if (live is not null)
     {
-        <p class="sc-muted">Only Finance and Admin users can send a payment request.</p>
+        @* The state staff most need to see. Without this the button appears to do nothing and the
+           next thing anybody does is send the request by hand, which is what this replaces. *@
+        <p class="sc-po-display" style="margin-bottom:.25rem">@live.ReleaseStatus.Label()</p>
+
+        @if (live.IsAwaitingApproval)
+        {
+            <p class="sc-muted">
+                R @live.AmountZarAtRequest.ToString("N2") to @(live.PaymentContact?.Name ?? "a contact"),
+                raised by @live.RaisedByName on @live.RaisedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm").
+                <strong>Nothing has been sent to them.</strong> The Financial Director has to approve it first.
+            </p>
+
+            @if (canRequest)
+            {
+                <form method="post" asp-controller="Orders" asp-action="WithdrawPaymentRequest"
+                      asp-route-id="@Model.SupplierOrderId" class="sc-inline-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="requestId" value="@live.Id" />
+                    <button type="submit" class="btn btn-secondary">Withdraw</button>
+                </form>
+            }
+        }
+        else
+        {
+            <p class="sc-muted">
+                Approved to release R @live.AmountZarAtRequest.ToString("N2") to
+                @(live.PaymentContact?.Name ?? "a contact"). It still has to be sent.
+            </p>
+
+            @if (Model.OutstandingZar != live.AmountZarAtRequest)
+            {
+                @* Caught here as well as at release, so nobody clicks expecting it to go out. *@
+                <p class="sc-muted">
+                    <strong>The outstanding balance has changed</strong> from
+                    R @live.AmountZarAtRequest.ToString("N2") to R @Model.OutstandingZar.ToString("N2")
+                    since this was approved, so it can no longer be sent. Raise it again for the amount
+                    that is actually owing.
+                </p>
+            }
+            else if (canRequest)
+            {
+                <form method="post" asp-controller="Orders" asp-action="ReleasePayment"
+                      asp-route-id="@Model.SupplierOrderId" class="sc-inline-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="requestId" value="@live.Id" />
+                    <button type="submit" class="btn btn-primary">
+                        Send to @(live.PaymentContact?.Name ?? "the contact")
+                    </button>
+                </form>
+                <span class="sc-hint">Delivery: @Model.DeliveryDescription</span>
+            }
+        }
+    }
+    else if (!canRequest)
+    {
+        <p class="sc-muted">Only Finance and Admin users can request a payment.</p>
     }
     else if (Model.Contacts.Count == 0)
     {
-        <p class="sc-muted">No payment contacts yet. Add the person who approves payments below.</p>
+        <p class="sc-muted">No payment contacts yet. Add the person who pays suppliers below.</p>
     }
     else
     {
@@ -27,7 +87,8 @@
             @Html.AntiForgeryToken()
 
             <p class="sc-muted sc-request-intro">
-                Sends @Model.PoNumber — @Model.Supplier (@Model.Product) with the invoice attached.
+                Puts @Model.PoNumber &mdash; @Model.Supplier (@Model.Product) to the Financial Director.
+                Nothing goes to the contact below until it is approved.
             </p>
 
             <ul class="sc-contact-list">
@@ -47,12 +108,16 @@
 
             <label class="sc-check">
                 <input type="checkbox" name="attachInvoice" value="true" checked />
-                <span>Attach the invoice file</span>
+                <span>Attach the invoice file when it is sent</span>
             </label>
 
+            <div>
+                <label class="form-label" for="releaseNote">Note for the Financial Director (optional)</label>
+                <input class="form-control" id="releaseNote" name="note" maxlength="1000" />
+            </div>
+
             <div class="sc-request-action">
-                <button type="submit" class="btn btn-primary">Send payment request</button>
-                <span class="sc-hint">Delivery: @Model.DeliveryDescription</span>
+                <button type="submit" class="btn btn-primary">Request approval to pay</button>
             </div>
         </form>
     }
@@ -84,25 +149,27 @@
         </details>
     }
 
-    @if (Model.History.Count > 0)
+    @if (past.Count > 0)
     {
         <hr class="sc-rule" />
-        <p class="sc-label">Requests sent</p>
+        <p class="sc-label">History</p>
         <ul class="sc-history">
-            @foreach (var r in Model.History)
+            @foreach (var r in past)
             {
                 <li>
-                    <span class="sc-history-when">@r.SentAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
-                    @if (r.Status == PaymentRequestStatus.Sent)
+                    <span class="sc-history-when">@((r.SentAt ?? r.RaisedAt).ToLocalTime().ToString("dd MMM yyyy HH:mm"))</span>
+                    @if (r.ReleaseStatus == PaymentReleaseStatus.Released)
                     {
-                        <strong>Sent</strong>
+                        @* Two facts, deliberately separate: it was released, and the email either
+                           left or did not. *@
+                        <strong class="@(r.Status == PaymentRequestStatus.Sent ? "" : "sc-failed")">@r.Status.Label()</strong>
                     }
                     else
                     {
-                        <strong class="sc-failed">Failed</strong>
+                        <strong>@r.ReleaseStatus.Label()</strong>
                     }
                     <span>· @(r.PaymentContact?.Name ?? "contact removed")</span>
-                    <span class="sc-muted">· R @r.AmountZarAtRequest.ToString("N2") · by @(r.SentByName ?? "unknown")</span>
+                    <span class="sc-muted">· R @r.AmountZarAtRequest.ToString("N2") · raised by @(r.RaisedByName ?? "unknown")</span>
                     @if (!string.IsNullOrWhiteSpace(r.ErrorMessage))
                     {
                         <span class="sc-cell-sub">@r.ErrorMessage</span>

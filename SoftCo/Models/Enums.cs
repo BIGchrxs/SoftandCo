@@ -80,13 +80,44 @@ public enum DocumentKind
 }
 
 /// <summary>
-/// Outcome of a single attempt to email a payment request. Failures are kept rather than
-/// discarded so "we asked them" can never be claimed for a message that never left.
+/// Whether the email actually left. Failures are kept rather than discarded, so "we asked them"
+/// can never be claimed for a message that never went.
+///
+/// This answers one question and must not be made to answer another. Since payment releases need
+/// approval first, a request now exists before any email is attempted - hence
+/// <see cref="NotSent"/>, which is still an answer to "did it leave?" rather than an overload.
+/// Where the request has got to in the approval workflow is
+/// <see cref="PaymentRequest.ReleaseStatus"/>, a separate field.
+///
+/// NotSent is 2 rather than 0 because Sent and Failed are already written to the database and must
+/// never be renumbered.
 /// </summary>
 public enum PaymentRequestStatus
 {
-    Sent   = 0,
-    Failed = 1
+    Sent    = 0,
+    Failed  = 1,
+    NotSent = 2
+}
+
+/// <summary>
+/// How far a payment release has got towards the money actually being asked for.
+///
+/// Deliberately separate from <see cref="PaymentRequestStatus"/>: one says whether the Financial
+/// Director has agreed, the other whether the email went. A request can be Approved and not yet
+/// Released, or Released and Failed - and conflating them is how "it was approved" quietly comes
+/// to mean "somebody clicked a button".
+///
+/// PendingApproval is 0 because that is where a newly raised request starts. The one request that
+/// predates this workflow is set to Released by the migration rather than being left to default,
+/// since it was genuinely sent.
+/// </summary>
+public enum PaymentReleaseStatus
+{
+    PendingApproval = 0,
+    Approved        = 1,
+    Rejected        = 2,
+    Released        = 3,
+    Withdrawn       = 4
 }
 
 /// <summary>

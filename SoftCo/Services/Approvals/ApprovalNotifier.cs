@@ -17,9 +17,25 @@ public interface IApprovalNotifier
     Task NotifyApproversAsync(Approval approval, SupplierOrder order, string? link,
                               CancellationToken ct = default);
 
+    /// <summary>
+    /// Tells the Financial Director a payment release is waiting. No attachment: the decision is
+    /// about an amount against an invoice already on the record, and the link goes straight to it.
+    /// </summary>
+    Task NotifyPaymentApproversAsync(Approval approval, PaymentRequest request, string? link,
+                                     CancellationToken ct = default);
+
     /// <summary>Tells the person who submitted it what was decided.</summary>
     Task NotifySubmitterAsync(Approval approval, SupplierOrder order, string? link,
                               CancellationToken ct = default);
+
+    /// <summary>
+    /// Tells the person who raised a payment release what was decided.
+    ///
+    /// Not optional. Without it, staff press a button, nothing visibly happens, and the next thing
+    /// they do is send the request by hand - which is the behaviour this whole workflow replaces.
+    /// </summary>
+    Task NotifyPaymentSubmitterAsync(Approval approval, PaymentRequest request, string? link,
+                                     CancellationToken ct = default);
 }
 
 /// <summary>
@@ -84,11 +100,7 @@ public sealed class ApprovalNotifier : IApprovalNotifier
     public async Task NotifySubmitterAsync(Approval approval, SupplierOrder order, string? link,
                                            CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(approval.RequestedById)) return;
-
-        var submitter = await _db.Users.AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == approval.RequestedById || u.Email == approval.RequestedById, ct);
-
+        var submitter = await SubmitterAsync(approval, ct);
         if (submitter?.Email is not { Length: > 0 }) return;
 
         var outcome = approval.Status == ApprovalStatus.Approved ? "approved" : "rejected";
@@ -113,6 +125,82 @@ public sealed class ApprovalNotifier : IApprovalNotifier
 
         // Deliberately not attached. The submitter raised this and has the document; what they need
         // is the decision and the reason.
+        await SendAsync(approval, new EmailMessage(submitter.Email, DisplayName(submitter), subject, body, []), ct);
+    }
+
+    public async Task NotifyPaymentApproversAsync(Approval approval, PaymentRequest request,
+                                                  string? link, CancellationToken ct = default)
+    {
+        var approvers = await ActiveApproversAsync(ct);
+
+        if (approvers.Count == 0)
+        {
+            approval.NotificationSent = false;
+            approval.NotificationError =
+                "No active Financial Director account to notify. The request is in the approval queue.";
+            return;
+        }
+
+        var order = request.SupplierOrder;
+        var subject = $"Payment release needed - {order?.PoNumber} - R {approval.AmountZarAtRequest:N2}";
+
+        foreach (var approver in approvers)
+        {
+            var body = $"""
+                Hi {DisplayName(approver)},
+
+                {approval.RequestedByName ?? "A member of staff"} has asked you to approve releasing a
+                payment to a supplier.
+
+                PO number      {order?.PoNumber}
+                Supplier       {order?.Supplier?.Name}
+                Invoice ref    {order?.InvoiceRef ?? "-"}
+                Pay to         {request.PaymentContact?.Name} <{request.PaymentContact?.Email}>
+
+                Amount         R {approval.AmountZarAtRequest:N2}
+                {(string.IsNullOrWhiteSpace(approval.RequestNote) ? "" : $"Note           {approval.RequestNote}\n")}
+                Nothing is sent to {request.PaymentContact?.Name} until you approve this. If the
+                outstanding balance changes before it is released, it comes back to you.
+
+                {(link is null ? "" : $"Approve or reject: {link}")}
+                """;
+
+            await SendAsync(approval, new EmailMessage(approver.Email!, DisplayName(approver),
+                                                       subject, body, []), ct);
+        }
+
+        approval.NotifiedTo = string.Join(", ", approvers.Select(a => a.Email));
+    }
+
+    public async Task NotifyPaymentSubmitterAsync(Approval approval, PaymentRequest request,
+                                                  string? link, CancellationToken ct = default)
+    {
+        var submitter = await SubmitterAsync(approval, ct);
+        if (submitter?.Email is not { Length: > 0 }) return;
+
+        var approved = approval.Status == ApprovalStatus.Approved;
+        var order = request.SupplierOrder;
+        var subject = $"Payment release {(approved ? "approved" : "rejected")} - {order?.PoNumber}";
+
+        var body = $"""
+            Hi {DisplayName(submitter)},
+
+            The payment release for {order?.PoNumber} has been {(approved ? "approved" : "rejected")}
+            by {approval.DecidedByName ?? "the Financial Director"}.
+
+            Supplier       {order?.Supplier?.Name}
+            Pay to         {request.PaymentContact?.Name}
+            Amount         R {approval.AmountZarAtRequest:N2}
+            Decided        {approval.DecidedAt?.ToLocalTime():dd MMM yyyy HH:mm}
+
+            {(string.IsNullOrWhiteSpace(approval.DecisionReason) ? "" : $"Reason         {approval.DecisionReason}\n")}
+            {(approved
+                ? "Open the order and release it to send the request to the payment contact. Nothing has gone to them yet."
+                : "Nothing has been sent. Deal with the reason above and raise it again if it still needs paying.")}
+
+            {(link is null ? "" : $"Full record: {link}")}
+            """;
+
         await SendAsync(approval, new EmailMessage(submitter.Email, DisplayName(submitter), subject, body, []), ct);
     }
 
@@ -187,6 +275,18 @@ public sealed class ApprovalNotifier : IApprovalNotifier
 
             {(link is null ? "" : $"Approve or reject: {link}")}
             """;
+    }
+
+    /// <summary>
+    /// The account that raised the request. Matched on id or email, because the two have been used
+    /// interchangeably as "who did this" across the system's history.
+    /// </summary>
+    private async Task<ApplicationUser?> SubmitterAsync(Approval approval, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(approval.RequestedById)) return null;
+
+        return await _db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == approval.RequestedById || u.Email == approval.RequestedById, ct);
     }
 
     private static string DisplayName(ApplicationUser user) =>

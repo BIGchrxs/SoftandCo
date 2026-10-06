@@ -22,14 +22,17 @@ public class ApprovalsController : Controller
 {
     private readonly AppDbContext _db;
     private readonly IPurchaseOrderApprovalService _approvals;
+    private readonly IPaymentReleaseService _releases;
     private readonly IApprovalNotifier _notifier;
     private readonly UserManager<ApplicationUser> _users;
 
     public ApprovalsController(AppDbContext db, IPurchaseOrderApprovalService approvals,
-                               IApprovalNotifier notifier, UserManager<ApplicationUser> users)
+                               IPaymentReleaseService releases, IApprovalNotifier notifier,
+                               UserManager<ApplicationUser> users)
     {
         _db = db;
         _approvals = approvals;
+        _releases = releases;
         _notifier = notifier;
         _users = users;
     }
@@ -44,7 +47,6 @@ public class ApprovalsController : Controller
     public async Task<IActionResult> Queue(bool decided = false)
     {
         var q = _db.Approvals.AsNoTracking()
-            .Include(a => a.SupplierOrder).ThenInclude(o => o!.Supplier)
             .Where(a => decided ? a.Status != ApprovalStatus.Pending : a.Status == ApprovalStatus.Pending);
 
         var rows = await q
@@ -56,14 +58,21 @@ public class ApprovalsController : Controller
                 Id = a.Id,
                 Kind = a.Kind,
                 Status = a.Status,
-                Reference = a.SupplierOrder!.PoNumber ?? "(not numbered)",
-                SupplierName = a.SupplierOrder!.Supplier!.Name,
+                // Both kinds lead back to an order, but by different routes: a purchase order IS
+                // the subject, while a payment release hangs off a PaymentRequest that belongs to
+                // one. Resolved here so the queue stays a single query rather than a union.
+                Reference = (a.SupplierOrder != null
+                    ? a.SupplierOrder.PoNumber
+                    : a.PaymentRequest!.SupplierOrder!.PoNumber) ?? "(not numbered)",
+                SupplierName = a.SupplierOrder != null
+                    ? a.SupplierOrder.Supplier!.Name
+                    : a.PaymentRequest!.SupplierOrder!.Supplier!.Name,
                 AmountZar = a.AmountZarAtRequest,
                 RequestedAt = a.RequestedAt,
                 RequestedByName = a.RequestedByName,
                 DecidedAt = a.DecidedAt,
                 DecidedByName = a.DecidedByName,
-                OrderId = a.SupplierOrderId
+                OrderId = a.SupplierOrderId ?? a.PaymentRequest!.SupplierOrderId
             })
             .ToListAsync();
 
@@ -86,7 +95,12 @@ public class ApprovalsController : Controller
     [Authorize(Roles = Roles.CanApprove)]
     public async Task<IActionResult> Approve(int id, string? note, CancellationToken ct)
     {
-        var result = await _approvals.ApproveAsync(id, Me, note, ct);
+        var kind = await KindOfAsync(id, ct);
+
+        var result = kind == ApprovalKind.PaymentRelease
+            ? await _releases.ApproveAsync(id, Me, note, ct)
+            : await _approvals.ApproveAsync(id, Me, note, ct);
+
         await NotifyDecisionAsync(id, result.Ok, ct);
 
         TempData["Flash"] = result.Ok ? "Approved. The person who raised it has been told." : result.Message;
@@ -97,7 +111,12 @@ public class ApprovalsController : Controller
     [Authorize(Roles = Roles.CanApprove)]
     public async Task<IActionResult> Reject(int id, string reason, CancellationToken ct)
     {
-        var result = await _approvals.RejectAsync(id, Me, reason, ct);
+        var kind = await KindOfAsync(id, ct);
+
+        var result = kind == ApprovalKind.PaymentRelease
+            ? await _releases.RejectAsync(id, Me, reason, ct)
+            : await _approvals.RejectAsync(id, Me, reason, ct);
+
         await NotifyDecisionAsync(id, result.Ok, ct);
 
         if (!result.Ok)
@@ -171,7 +190,27 @@ public class ApprovalsController : Controller
         if (!decided) return;
 
         var approval = await _db.Approvals.FirstOrDefaultAsync(a => a.Id == approvalId, ct);
-        if (approval?.SupplierOrderId is not int orderId) return;
+        if (approval is null) return;
+
+        if (approval.PaymentRequestId is int requestId)
+        {
+            var request = await _db.PaymentRequests
+                .Include(r => r.PaymentContact)
+                .Include(r => r.SupplierOrder).ThenInclude(o => o!.Supplier)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(r => r.Id == requestId, ct);
+
+            if (request?.SupplierOrder is null) return;
+
+            var paymentLink = Url.Action("Details", "Orders",
+                                         new { id = request.SupplierOrderId }, Request.Scheme);
+
+            await _notifier.NotifyPaymentSubmitterAsync(approval, request, paymentLink, ct);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (approval.SupplierOrderId is not int orderId) return;
 
         var order = await LoadOrderAsync(orderId, ct);
         if (order is null) return;
@@ -180,6 +219,12 @@ public class ApprovalsController : Controller
         await _notifier.NotifySubmitterAsync(approval, order, link, ct);
         await _db.SaveChangesAsync(ct);
     }
+
+    private async Task<ApprovalKind?> KindOfAsync(int approvalId, CancellationToken ct) =>
+        await _db.Approvals.AsNoTracking()
+            .Where(a => a.Id == approvalId)
+            .Select(a => (ApprovalKind?)a.Kind)
+            .FirstOrDefaultAsync(ct);
 
     private Task<SupplierOrder?> LoadOrderAsync(int orderId, CancellationToken ct) =>
         _db.SupplierOrders
@@ -194,7 +239,22 @@ public class ApprovalsController : Controller
         var approval = await _db.Approvals.AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == id);
 
-        if (approval?.SupplierOrderId is not int orderId) return null;
+        if (approval is null) return null;
+
+        // A purchase order is its own subject; a payment release points at a PaymentRequest, which
+        // in turn belongs to an order. Either way the approver is shown the order.
+        PaymentRequest? request = null;
+
+        if (approval.PaymentRequestId is int requestId)
+        {
+            request = await _db.PaymentRequests.AsNoTracking()
+                .Include(r => r.PaymentContact)
+                .FirstOrDefaultAsync(r => r.Id == requestId);
+
+            if (request is null) return null;
+        }
+
+        if ((approval.SupplierOrderId ?? request?.SupplierOrderId) is not int orderId) return null;
 
         var order = await _db.SupplierOrders.AsNoTracking()
             .Include(o => o.Supplier)
@@ -212,6 +272,7 @@ public class ApprovalsController : Controller
         {
             Approval = approval,
             Order = order,
+            PaymentRequest = request,
             Projects = string.Join(", ", order.OrderProjects
                 .Select(op => op.Project?.Name).Where(n => !string.IsNullOrWhiteSpace(n))!),
             CanDecide = canDecide.Ok,

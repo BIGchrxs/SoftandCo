@@ -331,4 +331,63 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
           "Approved with no recorded fingerprint cannot be issued");
 }
 
+
+// --- Payment release: raise, approve, release -------------------------------------------
+{
+    // Raising. The invoice gate is the one the old direct-send flow had; what is new is that
+    // passing it no longer sends anything.
+    Check(ApprovalRules.CanRaiseRelease(true, 1000m, true, false).Ok, "A complete request can be raised");
+    Check(!ApprovalRules.CanRaiseRelease(false, 1000m, true, false).Ok, "No invoice attached, nothing to pay against");
+    Check(!ApprovalRules.CanRaiseRelease(true, 1000m, false, false).Ok, "No contact chosen, nobody to ask");
+    Check(!ApprovalRules.CanRaiseRelease(true, 0m, true, false).Ok, "Nothing outstanding, nothing to release");
+    Check(!ApprovalRules.CanRaiseRelease(true, -5m, true, false).Ok, "An overpaid order has nothing to release");
+    Check(!ApprovalRules.CanRaiseRelease(true, 1000m, true, true).Ok, "One waiting request at a time");
+
+    // Releasing. The amount is checked again against what is outstanding NOW: the Financial
+    // Director approved a figure, and if a payment landed in between, that figure is no longer
+    // what would be asked for.
+    Check(ApprovalRules.CanRelease(PaymentReleaseStatus.Approved, 1000m, 1000m).Ok,
+          "An approved release for the unchanged amount can be sent");
+    Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.Approved, 1000m, 700m).Ok,
+          "A payment recorded after approval blocks the release");
+    Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.Approved, 1000m, 1000.01m).Ok,
+          "One cent of difference is still a different amount");
+    Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.PendingApproval, 1000m, 1000m).Ok,
+          "Nothing is sent before the Financial Director has agreed");
+    Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.Rejected, 1000m, 1000m).Ok,
+          "A rejected release is not sent");
+    Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.Released, 1000m, 1000m).Ok,
+          "A released request is not sent twice");
+    Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.Withdrawn, 1000m, 1000m).Ok,
+          "A withdrawn release is not sent");
+
+    Check(ApprovalRules.CanWithdrawRelease(PaymentReleaseStatus.PendingApproval).Ok,
+          "A waiting release can be withdrawn");
+    Check(!ApprovalRules.CanWithdrawRelease(PaymentReleaseStatus.Approved).Ok,
+          "Withdrawing cannot undo an approval already given");
+    Check(!ApprovalRules.CanWithdrawRelease(PaymentReleaseStatus.Released).Ok,
+          "A sent request cannot be withdrawn");
+
+    // The two statuses answer different questions and must not be conflated. A new request has
+    // not been sent, and saying so is not the same as saying it failed.
+    var fresh = new PaymentRequest();
+    Check(fresh.Status == PaymentRequestStatus.NotSent, "A newly raised request has not been sent");
+    Check(fresh.ReleaseStatus == PaymentReleaseStatus.PendingApproval, "and is waiting on the Financial Director");
+    Check(fresh.IsAwaitingApproval && !fresh.IsReadyToRelease, "Awaiting approval is not ready to release");
+    Check(fresh.SentAt is null, "Nothing claims to have been sent before it was");
+
+    var approved = new PaymentRequest { ReleaseStatus = PaymentReleaseStatus.Approved };
+    Check(approved.IsReadyToRelease && !approved.IsAwaitingApproval, "Approved is ready to release");
+
+    // A released request whose email bounced is both Released and Failed - the point of keeping
+    // the two apart.
+    var failed = new PaymentRequest
+    {
+        ReleaseStatus = PaymentReleaseStatus.Released,
+        Status = PaymentRequestStatus.Failed
+    };
+    Check(!failed.IsAwaitingApproval && !failed.IsReadyToRelease,
+          "A released request that failed to send is neither waiting nor ready");
+}
+
 Console.WriteLine($"All {passed} checks passed.");

@@ -26,11 +26,14 @@ public class OrdersController : Controller
     private readonly IDocumentStore _documents;
     private readonly IEmailService _email;
     private readonly IPurchaseOrderApprovalService _approvals;
+    private readonly IPaymentReleaseService _releases;
+    private readonly IApprovalNotifier _notifier;
     private readonly UserManager<ApplicationUser> _users;
 
     public OrdersController(AppDbContext db, IAuditService audit, IPoNumberGenerator poNumbers,
                             IDocumentStore documents, IEmailService email,
-                            IPurchaseOrderApprovalService approvals, UserManager<ApplicationUser> users)
+                            IPurchaseOrderApprovalService approvals, IPaymentReleaseService releases,
+                            IApprovalNotifier notifier, UserManager<ApplicationUser> users)
     {
         _db = db;
         _audit = audit;
@@ -38,8 +41,12 @@ public class OrdersController : Controller
         _documents = documents;
         _email = email;
         _approvals = approvals;
+        _releases = releases;
+        _notifier = notifier;
         _users = users;
     }
+
+    private Actor Me => new(_users.GetUserId(User), User.Identity?.Name);
 
     // --- Grid ----------------------------------------------------------------------------
 
@@ -444,73 +451,92 @@ public class OrdersController : Controller
     }
 
     /// <summary>
-    /// Emails the chosen contact asking for this invoice to be paid, and records that it
-    /// happened. The PaymentRequest row is written either way: a failure that left no trace
-    /// would let someone believe a request went out when it never did.
+    /// Raises a payment release and puts it to the Financial Director. Nothing is emailed to the
+    /// payment contact here - that was the old behaviour, where one click sent the request straight
+    /// out, and it is exactly what this phase removes.
     /// </summary>
     [HttpPost, ValidateAntiForgeryToken]
     [Authorize(Roles = Roles.CanRecordPayments)]
-    public async Task<IActionResult> RequestPayment(int id, int contactId, bool attachInvoice = true)
+    public async Task<IActionResult> RequestPayment(int id, int contactId, bool attachInvoice = true,
+                                                    string? note = null, CancellationToken ct = default)
     {
-        var order = await _db.SupplierOrders
-            .Include(o => o.Supplier)
-            .Include(o => o.OrderProjects).ThenInclude(op => op.Project)
-            .Include(o => o.Payments)
-            .Include(o => o.Documents)
-            .AsSplitQuery()
-            .FirstOrDefaultAsync(o => o.Id == id);
+        var (result, request) = await _releases.RaiseAsync(id, contactId, attachInvoice, Me, note, ct);
 
-        if (order is null) return NotFound();
-
-        var contact = await _db.PaymentContacts.FirstOrDefaultAsync(c => c.Id == contactId && c.IsActive);
-        if (contact is null)
+        if (!result.Ok || request is null)
         {
-            TempData["Flash"] = "Choose who the request should go to.";
+            TempData["Flash"] = result.Message;
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        // Gate: no invoice on the record, nothing to ask anyone to pay.
-        if (!order.HasInvoice)
+        var approval = await _db.Approvals
+            .Where(a => a.PaymentRequestId == request.Id && a.Status == ApprovalStatus.Pending)
+            .OrderByDescending(a => a.RequestedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (approval is not null)
         {
-            TempData["Flash"] = "Attach the supplier invoice before requesting payment.";
+            var link = Url.Action("Review", "Approvals", new { id = approval.Id }, Request.Scheme);
+            await _notifier.NotifyPaymentApproversAsync(approval, request, link, ct);
+            await _db.SaveChangesAsync(ct);
+
+            TempData["Flash"] = approval.NotificationSent
+                ? $"Sent to {approval.NotifiedTo} for approval. Nothing goes to the supplier contact until it is approved."
+                : approval.NotificationError ?? "Raised for approval, but the notification email did not go out.";
+        }
+
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    /// <summary>
+    /// Sends the approved payment request to the chosen contact. This is the only place an email
+    /// about paying a supplier actually leaves, and it cannot be reached without approval.
+    /// </summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanRecordPayments)]
+    public async Task<IActionResult> ReleasePayment(int id, int requestId, CancellationToken ct = default)
+    {
+        var (check, request) = await _releases.PrepareReleaseAsync(requestId, ct);
+
+        if (!check.Ok || request?.SupplierOrder is null || request.PaymentContact is null)
+        {
+            TempData["Flash"] = check.Message;
             return RedirectToAction(nameof(Details), new { id });
         }
 
+        var order = request.SupplierOrder;
+        var contact = request.PaymentContact;
         var subject = $"Payment request - {order.PoNumber} - {order.Supplier?.Name}";
+
         var message = new EmailMessage(contact.Email, contact.Name, subject,
-                                       BuildBody(order, contact), BuildAttachments(order, attachInvoice));
+                                       BuildBody(order, contact),
+                                       BuildAttachments(order, request.AttachInvoice));
 
-        var request = new PaymentRequest
-        {
-            SupplierOrderId = order.Id,
-            PaymentContactId = contact.Id,
-            Subject = subject,
-            AmountZarAtRequest = order.OutstandingZar,
-            SentById = User.Identity?.Name,
-            SentByName = User.Identity?.Name
-        };
-
+        string? error = null;
         try
         {
-            await _email.SendAsync(message);
-            request.Status = PaymentRequestStatus.Sent;
+            await _email.SendAsync(message, ct);
             TempData["Flash"] = $"Payment request {_email.DeliveryDescription} for {contact.Name}.";
         }
         catch (EmailException ex)
         {
-            request.Status = PaymentRequestStatus.Failed;
-            request.ErrorMessage = ex.Message;
+            // The row is written either way. A failure that left no trace would let someone believe
+            // a request went out when it never did.
+            error = ex.Message;
             TempData["Flash"] = ex.Message;
         }
 
-        _db.PaymentRequests.Add(request);
+        await _releases.RecordSendAsync(request, Me, subject, error, ct);
 
-        _audit.Record(nameof(SupplierOrder), order.Id.ToString(), "PaymentRequested",
-                      field: request.Status.ToString(),
-                      newValue: $"{contact.Name} <{contact.Email}> R {order.OutstandingZar:N2}");
+        return RedirectToAction(nameof(Details), new { id });
+    }
 
-        await _db.SaveChangesAsync();
-
+    /// <summary>Pulls a raised request back before anyone has decided it.</summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanRecordPayments)]
+    public async Task<IActionResult> WithdrawPaymentRequest(int id, int requestId, CancellationToken ct = default)
+    {
+        var result = await _releases.WithdrawAsync(requestId, Me, ct);
+        TempData["Flash"] = result.Ok ? "Payment request withdrawn." : result.Message;
         return RedirectToAction(nameof(Details), new { id });
     }
 

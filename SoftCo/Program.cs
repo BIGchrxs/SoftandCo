@@ -95,6 +95,7 @@ builder.Services.AddScoped<IPurchaseOrderDocumentService, PurchaseOrderDocumentS
 
 // The approval workflow. The judgement lives in the pure ApprovalRules; these do the I/O.
 builder.Services.AddScoped<IPurchaseOrderApprovalService, PurchaseOrderApprovalService>();
+builder.Services.AddScoped<IPaymentReleaseService, PaymentReleaseService>();
 builder.Services.AddScoped<IApprovalNotifier, ApprovalNotifier>();
 
 // Email: in Development the composed message is written to App_Data/sent-email instead of being

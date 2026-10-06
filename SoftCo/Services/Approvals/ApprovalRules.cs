@@ -124,6 +124,68 @@ public static class ApprovalRules
             ? RuleResult.Allowed
             : RuleResult.Refuse("There is nothing waiting for approval on this order.");
 
+    // --- Payment release ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether there is anything to ask the Financial Director to release.
+    ///
+    /// The invoice gate is the same one the old direct-send flow applied, and for the same reason:
+    /// asking finance to pay against a packing list is meaningless. What is new is that nothing is
+    /// emailed on the strength of this check alone.
+    /// </summary>
+    public static RuleResult CanRaiseRelease(bool hasInvoice, decimal outstandingZar, bool hasContact,
+                                             bool alreadyPending)
+    {
+        if (alreadyPending)
+            return RuleResult.Refuse("A payment release for this order is already waiting for approval.");
+
+        if (!hasInvoice)
+            return RuleResult.Refuse("Attach the supplier invoice before requesting payment.");
+
+        if (!hasContact)
+            return RuleResult.Refuse("Choose who the request should go to.");
+
+        if (outstandingZar <= 0m)
+            return RuleResult.Refuse("There is nothing outstanding on this order to pay.");
+
+        return RuleResult.Allowed;
+    }
+
+    /// <summary>
+    /// Whether an approved payment release may now actually be sent.
+    ///
+    /// The amount is checked again against what is outstanding now. The Financial Director approved
+    /// releasing a specific figure; if a payment was recorded in between, that figure is no longer
+    /// what would be asked for, and the request goes back for approval rather than out of the door.
+    /// Serves the same purpose for money as the fingerprint does for a purchase order.
+    /// </summary>
+    public static RuleResult CanRelease(PaymentReleaseStatus status, decimal approvedAmountZar,
+                                        decimal outstandingNowZar)
+    {
+        if (status == PaymentReleaseStatus.Released)
+            return RuleResult.Refuse("That payment request has already been sent.");
+
+        if (status != PaymentReleaseStatus.Approved)
+            return RuleResult.Refuse("That payment release has not been approved yet.");
+
+        if (approvedAmountZar != outstandingNowZar)
+            return RuleResult.Refuse(
+                $"The outstanding balance has changed from R {approvedAmountZar:N2} to " +
+                $"R {outstandingNowZar:N2} since this was approved, so it cannot be sent. " +
+                "Raise it again for the amount that is actually owing.");
+
+        return RuleResult.Allowed;
+    }
+
+    /// <summary>
+    /// Whether a raised payment release may be pulled back. Only while nobody has decided it, for
+    /// the same reason a purchase order cannot be withdrawn after approval.
+    /// </summary>
+    public static RuleResult CanWithdrawRelease(PaymentReleaseStatus status) =>
+        status == PaymentReleaseStatus.PendingApproval
+            ? RuleResult.Allowed
+            : RuleResult.Refuse("There is nothing waiting for approval on this payment request.");
+
     /// <summary>
     /// Whether a change to the order should knock an approval down.
     ///
