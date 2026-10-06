@@ -8,6 +8,8 @@ using SoftCo.Services;
 using SoftCo.Services.Documents;
 using SoftCo.Services.Email;
 using SoftCo.Services.ExchangeRates;
+using SoftCo.Services.Numbering;
+using SoftCo.Services.Pdf;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -69,11 +71,26 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditService, AuditService>();
 
-// Purchase-order numbers come from a Postgres sequence, so this needs the request's DbContext.
+// Purchase-order, invoice and credit-note references all come from Postgres sequences, so these
+// need the request's DbContext. IPoNumberGenerator is a named delegate to the shared generator and
+// must be registered after it.
+builder.Services.AddScoped<IDocumentNumberGenerator, DocumentNumberGenerator>();
 builder.Services.AddScoped<IPoNumberGenerator, PoNumberGenerator>();
 
 // Order attachments live under App_Data, outside wwwroot.
 builder.Services.AddSingleton<IDocumentStore, DocumentStore>();
+
+// PDF rendering. PDFsharp resolves fonts through process-wide static state rather than DI, so the
+// resolver is assigned once here; Verify() then reads every declared face, turning a missing or
+// mis-pathed font file into a startup failure instead of a 500 the first time somebody asks the
+// Financial Director to approve something.
+var fontResolver = new EmbeddedFontResolver();
+fontResolver.Verify();
+PdfSharp.Fonts.GlobalFontSettings.FontResolver = fontResolver;
+
+builder.Services.Configure<CompanyOptions>(builder.Configuration.GetSection(CompanyOptions.SectionName));
+builder.Services.AddSingleton<IPdfRenderer, MigraDocPdfRenderer>();
+builder.Services.AddScoped<IPurchaseOrderDocumentService, PurchaseOrderDocumentService>();
 
 // Email: in Development the composed message is written to App_Data/sent-email instead of being
 // sent, so the flow can be exercised end to end without credentials and without the risk of

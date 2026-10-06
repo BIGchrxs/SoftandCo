@@ -16,6 +16,40 @@ Check(PoNumberFormat.Format(2027, 1) == "PO-2027-0001", "Year rolls over in the 
 Check(PoNumberFormat.Format(2026, 10000) == "PO-2026-10000", "Beyond four digits keeps growing");
 Check(PoNumberFormat.Format(2026, 123456) == "PO-2026-123456", "Six figures still render in full");
 
+// --- Document numbering, shared across PO / invoice / credit note ----------------------
+{
+    var Fmt = SoftCo.Services.Numbering.DocumentNumberFormat.Format;
+    var PO = SoftCo.Services.Numbering.DocumentNumberKind.PurchaseOrder;
+    var INV = SoftCo.Services.Numbering.DocumentNumberKind.CustomerInvoice;
+    var CN = SoftCo.Services.Numbering.DocumentNumberKind.CreditNote;
+
+    Check(Fmt(INV, 2026, 1) == "INV-2026-0001", "First invoice of the year");
+    Check(Fmt(CN, 2026, 1) == "CN-2026-0001", "First credit note of the year");
+    Check(Fmt(PO, 2026, 1) == "PO-2026-0001", "Purchase orders keep their existing shape");
+
+    Check(Fmt(INV, 2027, 1) == "INV-2027-0001", "Year rolls over in the prefix");
+    Check(Fmt(CN, 2026, 10000) == "CN-2026-10000", "Beyond four digits keeps growing");
+    Check(Fmt(INV, 2026, 123456) == "INV-2026-123456", "Six figures still render in full");
+
+    // Three prefixes, three sequences. A credit note must never be mistakable for the invoice it
+    // credits, on paper or in a filename.
+    Check(Fmt(PO, 2026, 7) != Fmt(INV, 2026, 7) && Fmt(INV, 2026, 7) != Fmt(CN, 2026, 7),
+          "The same sequence value reads differently per document kind");
+
+    // PoNumberFormat is now a shim over the shared formatter. The PO checks above this block are
+    // unchanged and still pass, which is the evidence that moving the logic changed nothing - this
+    // asserts the two agree directly.
+    Check(PoNumberFormat.Format(2026, 42) == Fmt(PO, 2026, 42),
+          "PoNumberFormat and DocumentNumberFormat agree");
+
+    // An unmapped kind must fail loudly rather than issue references prefixed with its own name.
+    var unmapped = (SoftCo.Services.Numbering.DocumentNumberKind)99;
+    var threw = false;
+    try { SoftCo.Services.Numbering.DocumentNumberFormat.Prefix(unmapped); }
+    catch (ArgumentOutOfRangeException) { threw = true; }
+    Check(threw, "An unknown document kind throws rather than inventing a prefix");
+}
+
 // --- Upload: accepted types -----------------------------------------------------------
 Check(UploadValidator.Check("invoice.pdf", 25, Pdf()).Ok, "A real PDF is accepted");
 Check(UploadValidator.Check("INVOICE.PDF", 25, Pdf()).Ok, "Extension match is case-insensitive");
@@ -129,6 +163,78 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
           "Spacing and the usual abbreviations accepted");
     Check(!IsSa("Mauritius") && !IsSa("United Kingdom") && !IsSa(null),
           "Anything else is treated as foreign, which only relaxes the format check");
+}
+
+
+// --- A stored purchase order must never read as the supplier's invoice ------------------
+// HasInvoice gates the request-payment action. It tests == Invoice rather than != Other, so that
+// adding DocumentKind.PurchaseOrder could not turn a document Soft & Co wrote themselves into
+// permission to ask finance for money. These checks exist so a later "tidy-up" cannot regress it.
+{
+    var order = new SoftCo.Models.SupplierOrder();
+    Check(!order.HasInvoice, "An order with no documents has no invoice");
+
+    order.Documents.Add(new SoftCo.Models.OrderDocument { Kind = SoftCo.Models.DocumentKind.PurchaseOrder });
+    Check(!order.HasInvoice, "A generated purchase order does NOT satisfy HasInvoice");
+
+    order.Documents.Add(new SoftCo.Models.OrderDocument { Kind = SoftCo.Models.DocumentKind.Other });
+    Check(!order.HasInvoice, "A packing list does not satisfy HasInvoice either");
+
+    order.Documents.Add(new SoftCo.Models.OrderDocument { Kind = SoftCo.Models.DocumentKind.Invoice });
+    Check(order.HasInvoice, "Only the supplier's invoice unlocks the payment request");
+}
+
+// --- Settlement is derived from the payments, never typed in ---------------------------
+{
+    SoftCo.Models.SupplierOrder Order(decimal invoiced, params decimal[] paid)
+    {
+        var o = new SoftCo.Models.SupplierOrder
+        {
+            InvoiceValueForeign = invoiced,
+            InvoiceValueZar = invoiced * 2.5m,
+            ExchangeRate = 2.5m
+        };
+        foreach (var p in paid)
+            o.Payments.Add(new SoftCo.Models.OrderPayment { AmountForeign = p, AmountZar = p * 2.5m });
+        return o;
+    }
+
+    Check(Order(1000m).SettlementStatus == SoftCo.Models.SettlementStatus.Unpaid, "No payments is Unpaid");
+    Check(Order(1000m, 300m).SettlementStatus == SoftCo.Models.SettlementStatus.PartPaid, "A deposit is PartPaid");
+    Check(Order(1000m, 300m, 700m).SettlementStatus == SoftCo.Models.SettlementStatus.Paid, "Deposit plus settlement is Paid");
+
+    // The spreadsheet this replaces had rows reading "Outstanding" while fully paid, because the
+    // status was a column somebody typed. Overpayment must still read as Paid, not drift back.
+    Check(Order(1000m, 1200m).SettlementStatus == SoftCo.Models.SettlementStatus.Paid, "Overpayment reads as Paid");
+    Check(Order(0m, 0m).SettlementStatus == SoftCo.Models.SettlementStatus.Unpaid, "A zero-value order is Unpaid, not Paid");
+
+    Check(Order(1000m, 300m).OutstandingForeign == 700m, "Outstanding is invoiced minus paid");
+    Check(Order(1000m, 300m).PaidZar == 750m, "Rand paid sums the Rand column, not a reconversion");
+    Check(Order(1000m, 1200m).OutstandingForeign == -200m, "Overpayment shows as negative, not clamped to zero");
+}
+
+// --- The purchase-order document model --------------------------------------------------
+{
+    SoftCo.Services.Pdf.Models.PurchaseOrderLine Line(string ccy, decimal foreign, decimal zar) =>
+        new("Lighting", "Fairmont", ccy, foreign, 2.5m, zar);
+
+    var one = new SoftCo.Services.Pdf.Models.PurchaseOrderDocument(
+        "PO-2026-0001", new DateOnly(2026, 10, 6),
+        new SoftCo.Services.Pdf.Models.PdfParty("Soft & Co.", []),
+        new SoftCo.Services.Pdf.Models.PdfParty("Keorh", []),
+        [Line("CNY", 1000m, 2500m), Line("CNY", 500m, 1250m)]);
+
+    Check(one.TotalZar == 3750m, "Rand total sums the lines");
+    Check(one.TotalForeign is ("CNY", 1500m), "One currency across the lines totals in that currency");
+
+    // Mixed currencies cannot be added. The document reports nothing rather than a number that
+    // looks like money and is not - the same rule the project exposure figures follow.
+    var mixed = one with { Lines = [Line("CNY", 1000m, 2500m), Line("USD", 100m, 1800m)] };
+    Check(mixed.TotalForeign is null, "Mixed currencies produce no foreign total");
+    Check(mixed.TotalZar == 4300m, "Rand still totals across mixed currencies");
+
+    var empty = one with { Lines = [] };
+    Check(empty.TotalForeign is null && empty.TotalZar == 0m, "An empty document totals to nothing, not a crash");
 }
 
 Console.WriteLine($"All {passed} checks passed.");

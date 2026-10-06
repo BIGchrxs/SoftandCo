@@ -41,7 +41,7 @@
                     {
                         <tr>
                             <td><a asp-controller="OrderDocuments" asp-action="Download" asp-route-id="@d.Id">@d.OriginalFileName</a></td>
-                            <td>@(d.Kind == DocumentKind.Invoice ? "Invoice" : "Other")</td>
+                            <td>@d.Kind.Label()</td>
                             <td class="sc-muted">@d.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")<span class="sc-cell-sub">@(d.UploadedById ?? "unknown")</span></td>
                             <td class="sc-num">@((d.SizeBytes / 1024m).ToString("N0")) KB</td>
                             <td>

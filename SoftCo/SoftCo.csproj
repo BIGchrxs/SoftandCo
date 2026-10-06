@@ -24,6 +24,16 @@
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The brand faces, embedded rather than installed. PDFsharp 6 has no access to system fonts
+         on .NET Core, so without these the renderer throws - on Linux especially, which is where
+         this would otherwise first be noticed. Manrope and Cormorant Garamond are both SIL Open
+         Font Licence, which expressly permits embedding, so the bytes ship inside the assembly and
+         the Dockerfile needs no font package. Resource names are matched by EmbeddedFontResolver. -->
+    <EmbeddedResource Include="Assets/Fonts/*.ttf" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,9 +3,19 @@
   <ItemGroup>
     <!-- Source is linked rather than project-referenced, matching SoftCo.ExchangeRates.Tests:
          these units are deliberately free of EF and ASP.NET so they can be exercised on their own. -->
+    <Compile Include="../../SoftCo/Services/Numbering/DocumentNumberFormat.cs" Link="Services/DocumentNumberFormat.cs" />
     <Compile Include="../../SoftCo/Services/PoNumberFormat.cs" Link="Services/PoNumberFormat.cs" />
     <Compile Include="../../SoftCo/Services/Documents/UploadValidator.cs" Link="Services/UploadValidator.cs" />
     <Compile Include="../../SoftCo/Validation/SignInEmail.cs" Link="Validation/SignInEmail.cs" />
     <Compile Include="../../SoftCo/Validation/VatNumber.cs" Link="Validation/VatNumber.cs" />
+
+    <!-- The domain models are plain POCOs with no EF or ASP.NET reference, so the derived money
+         properties - PaidZar, OutstandingZar, SettlementStatus, HasInvoice - can be exercised
+         directly. ApplicationUser is the one exception: it derives from IdentityUser. -->
+    <Compile Include="../../SoftCo/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Remove="../../SoftCo/Models/ApplicationUser.cs" />
+
+    <!-- The PDF document model is deliberately free of EF types for the same reason. -->
+    <Compile Include="../../SoftCo/Services/Pdf/Models/*.cs" Link="Pdf/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

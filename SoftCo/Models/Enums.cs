@@ -65,11 +65,18 @@ public enum OrderType
 /// <summary>
 /// What a file attached to an order actually is. Only an Invoice unlocks the request-payment
 /// action - asking finance to pay against a packing list would be meaningless.
+///
+/// <see cref="PurchaseOrder"/> is a document Soft &amp; Co generated, not one someone uploaded. It
+/// is safe to store beside the others precisely because the request-payment gate tests
+/// <c>== Invoice</c> rather than <c>!= Other</c>: a stored purchase order must never be mistaken
+/// for the supplier's invoice and unlock a payment request against a document Soft &amp; Co wrote
+/// themselves. There is a unit test asserting exactly that, so a later refactor cannot regress it.
 /// </summary>
 public enum DocumentKind
 {
-    Invoice = 0,
-    Other   = 1
+    Invoice       = 0,
+    Other         = 1,
+    PurchaseOrder = 2
 }
 
 /// <summary>

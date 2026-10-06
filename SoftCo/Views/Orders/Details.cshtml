@@ -30,9 +30,22 @@
             {
                 <a class="btn btn-secondary" asp-action="Edit" asp-route-id="@Model.Id">Edit</a>
             }
-            <!--delete this delete action after testing, invoices cant be deleted-->
+            @if (User.CanSeeValues())
+            {
+                @* Renders on the fly and is not stored - this is "show me what I would be
+                   committing to", separate from generating the document that gets approved. *@
+                <a class="btn btn-secondary" asp-controller="PurchaseOrders" asp-action="Preview"
+                   asp-route-id="@Model.Id">Preview purchase order</a>
+            }
             @if (User.CanEditOrders())
             {
+                <form method="post" asp-controller="PurchaseOrders" asp-action="Generate"
+                      asp-route-id="@Model.Id" class="sc-inline-form">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">
+                        @(Model.Documents.Any(d => d.Kind == DocumentKind.PurchaseOrder) ? "Regenerate" : "Generate") purchase order
+                    </button>
+                </form>
             }
         </div>
     </div>

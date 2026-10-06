@@ -59,6 +59,14 @@ public static class EnumLabels
         _ => o.ToString()
     };
 
+    public static string Label(this DocumentKind k) => k switch
+    {
+        DocumentKind.Invoice => "Invoice",
+        DocumentKind.PurchaseOrder => "Purchase order",
+        DocumentKind.Other => "Other",
+        _ => k.ToString()
+    };
+
     public static string Label(this VatTreatment t) => t switch
     {
         VatTreatment.Standard => "Standard rate",

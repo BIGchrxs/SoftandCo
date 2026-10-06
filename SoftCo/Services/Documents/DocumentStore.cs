@@ -6,6 +6,14 @@ public interface IDocumentStore
 {
     Task<OrderDocument> SaveAsync(int orderId, Stream content, string displayName, UploadCheck check,
                                   DocumentKind kind, string? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stores a document this system produced rather than one somebody uploaded - a rendered
+    /// purchase order today, invoices and credit notes later.
+    /// </summary>
+    Task<OrderDocument> SaveGeneratedAsync(int orderId, byte[] content, string displayName,
+                                           DocumentKind kind, string? userId, CancellationToken ct = default);
+
     Stream OpenRead(OrderDocument document);
     bool Exists(OrderDocument document);
 }
@@ -27,28 +35,30 @@ public sealed class DocumentStore : IDocumentStore
     public async Task<OrderDocument> SaveAsync(int orderId, Stream content, string displayName,
         UploadCheck check, DocumentKind kind, string? userId, CancellationToken ct = default)
     {
-        var folder = FolderFor(orderId);
-        Directory.CreateDirectory(folder);
+        var document = NewDocument(orderId, kind, displayName, check.Extension, check.ContentType,
+                                   content.Length, userId);
 
-        var stored = UploadValidator.StoredName(check.Extension);
-        var path = Path.Combine(folder, stored);
+        await using var file = Create(document);
+        content.Position = 0;
+        await content.CopyToAsync(file, ct);
 
-        await using (var file = File.Create(path))
-        {
-            content.Position = 0;
-            await content.CopyToAsync(file, ct);
-        }
+        return document;
+    }
 
-        return new OrderDocument
-        {
-            SupplierOrderId = orderId,
-            Kind = kind,
-            OriginalFileName = UploadValidator.DisplayName(displayName),
-            StoredName = stored,
-            ContentType = check.ContentType,
-            SizeBytes = content.Length,
-            UploadedById = userId
-        };
+    public async Task<OrderDocument> SaveGeneratedAsync(int orderId, byte[] content, string displayName,
+        DocumentKind kind, string? userId, CancellationToken ct = default)
+    {
+        // Generated documents are always PDFs, and the bytes come from this process rather than
+        // from a request, so there is nothing to validate - but they are named, stored and read
+        // back through exactly the same path as an upload, which is the point. One storage rule,
+        // one traversal guard.
+        var document = NewDocument(orderId, kind, displayName, ".pdf", "application/pdf",
+                                   content.LongLength, userId);
+
+        await using var file = Create(document);
+        await file.WriteAsync(content, ct);
+
+        return document;
     }
 
     public Stream OpenRead(OrderDocument document) =>
@@ -56,6 +66,30 @@ public sealed class DocumentStore : IDocumentStore
 
     public bool Exists(OrderDocument document) =>
         File.Exists(PathFor(document));
+
+    private static OrderDocument NewDocument(int orderId, DocumentKind kind, string displayName,
+        string extension, string contentType, long size, string? userId) => new()
+        {
+            SupplierOrderId = orderId,
+            Kind = kind,
+            OriginalFileName = UploadValidator.DisplayName(displayName),
+            StoredName = UploadValidator.StoredName(extension),
+            ContentType = contentType,
+            SizeBytes = size,
+            UploadedById = userId
+        };
+
+    /// <summary>
+    /// Opens the file for writing at the document's resolved path. Goes through
+    /// <see cref="PathFor"/> like every read does, so the traversal guard has one implementation
+    /// and both callers - uploads and generated documents - are covered by it.
+    /// </summary>
+    private FileStream Create(OrderDocument document)
+    {
+        var path = PathFor(document);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return File.Create(path);
+    }
 
     private string FolderFor(int orderId) => Path.Combine(_root, orderId.ToString());
 
