@@ -54,8 +54,8 @@
         <div><dt>Projects</dt><dd>@(string.Join(", ", Model.OrderProjects.Select(op => op.Project?.Name)) is { Length: > 0 } p ? p : "—")</dd></div>
         <div><dt>Delivery status</dt><dd><span class="sc-stage">@((int)Model.FulfilmentStatus)</span> @Model.FulfilmentStatus.Label()</dd></div>
         <div><dt>Cargo readiness</dt><dd>@(Model.CargoReadinessDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
-        <div><dt>Invoice ref</dt><dd>@(Model.InvoiceRef ?? "—")</dd></div>
-        <div><dt>Invoice date</dt><dd>@(Model.InvoiceDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
+        <div><dt>Supplier invoice ref</dt><dd>@(Model.InvoiceRef ?? "—")</dd></div>
+        <div><dt>Supplier invoice date</dt><dd>@(Model.InvoiceDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
         <div><dt>Exchange rate</dt><dd>R @Model.ExchangeRate.ToString("N4") per @Model.CurrencyCode</dd></div>
     </dl>
 

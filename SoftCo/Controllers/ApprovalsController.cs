@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SoftCo.Data;
 using SoftCo.Models;
 using SoftCo.Services.Approvals;
+using SoftCo.Services.Invoicing;
 using SoftCo.ViewModels;
 
 namespace SoftCo.Controllers;
@@ -23,16 +24,18 @@ public class ApprovalsController : Controller
     private readonly AppDbContext _db;
     private readonly IPurchaseOrderApprovalService _approvals;
     private readonly IPaymentReleaseService _releases;
+    private readonly ICustomerInvoiceService _invoices;
     private readonly IApprovalNotifier _notifier;
     private readonly UserManager<ApplicationUser> _users;
 
     public ApprovalsController(AppDbContext db, IPurchaseOrderApprovalService approvals,
-                               IPaymentReleaseService releases, IApprovalNotifier notifier,
-                               UserManager<ApplicationUser> users)
+                               IPaymentReleaseService releases, ICustomerInvoiceService invoices,
+                               IApprovalNotifier notifier, UserManager<ApplicationUser> users)
     {
         _db = db;
         _approvals = approvals;
         _releases = releases;
+        _invoices = invoices;
         _notifier = notifier;
         _users = users;
     }
@@ -61,18 +64,26 @@ public class ApprovalsController : Controller
                 // Both kinds lead back to an order, but by different routes: a purchase order IS
                 // the subject, while a payment release hangs off a PaymentRequest that belongs to
                 // one. Resolved here so the queue stays a single query rather than a union.
-                Reference = (a.SupplierOrder != null
-                    ? a.SupplierOrder.PoNumber
-                    : a.PaymentRequest!.SupplierOrder!.PoNumber) ?? "(not numbered)",
+                Reference = a.SupplierOrder != null
+                    ? (a.SupplierOrder.PoNumber ?? "(not numbered)")
+                    : a.PaymentRequest != null
+                        ? (a.PaymentRequest.SupplierOrder!.PoNumber ?? "(not numbered)")
+                        // A draft invoice has no number until it is issued, which is the whole
+                        // point of the decision being asked for.
+                        : (a.CustomerInvoice!.InvoiceNumber ?? "Draft invoice"),
                 SupplierName = a.SupplierOrder != null
                     ? a.SupplierOrder.Supplier!.Name
-                    : a.PaymentRequest!.SupplierOrder!.Supplier!.Name,
+                    : a.PaymentRequest != null
+                        ? a.PaymentRequest.SupplierOrder!.Supplier!.Name
+                        : a.CustomerInvoice!.Client!.Name,
                 AmountZar = a.AmountZarAtRequest,
                 RequestedAt = a.RequestedAt,
                 RequestedByName = a.RequestedByName,
                 DecidedAt = a.DecidedAt,
                 DecidedByName = a.DecidedByName,
-                OrderId = a.SupplierOrderId ?? a.PaymentRequest!.SupplierOrderId
+                OrderId = a.SupplierOrderId
+                    ?? (a.PaymentRequest != null ? a.PaymentRequest.SupplierOrderId : (int?)null),
+                InvoiceId = a.CustomerInvoiceId
             })
             .ToListAsync();
 
@@ -97,9 +108,12 @@ public class ApprovalsController : Controller
     {
         var kind = await KindOfAsync(id, ct);
 
-        var result = kind == ApprovalKind.PaymentRelease
-            ? await _releases.ApproveAsync(id, Me, note, ct)
-            : await _approvals.ApproveAsync(id, Me, note, ct);
+        var result = kind switch
+        {
+            ApprovalKind.PaymentRelease => await _releases.ApproveAsync(id, Me, note, ct),
+            ApprovalKind.CustomerInvoice => await _invoices.ApproveAsync(id, Me, note, ct),
+            _ => await _approvals.ApproveAsync(id, Me, note, ct)
+        };
 
         await NotifyDecisionAsync(id, result.Ok, ct);
 
@@ -113,9 +127,12 @@ public class ApprovalsController : Controller
     {
         var kind = await KindOfAsync(id, ct);
 
-        var result = kind == ApprovalKind.PaymentRelease
-            ? await _releases.RejectAsync(id, Me, reason, ct)
-            : await _approvals.RejectAsync(id, Me, reason, ct);
+        var result = kind switch
+        {
+            ApprovalKind.PaymentRelease => await _releases.RejectAsync(id, Me, reason, ct),
+            ApprovalKind.CustomerInvoice => await _invoices.RejectAsync(id, Me, reason, ct),
+            _ => await _approvals.RejectAsync(id, Me, reason, ct)
+        };
 
         await NotifyDecisionAsync(id, result.Ok, ct);
 
@@ -252,6 +269,33 @@ public class ApprovalsController : Controller
                 .FirstOrDefaultAsync(r => r.Id == requestId);
 
             if (request is null) return null;
+        }
+
+        // A client invoice has no supplier order behind it at all, so it gets its own screen state
+        // rather than being forced through one that assumes an order.
+        if (approval.CustomerInvoiceId is int invoiceId)
+        {
+            var invoice = await _db.CustomerInvoices.AsNoTracking()
+                .Include(i => i.Client)
+                .Include(i => i.Project)
+                .Include(i => i.Lines)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(i => i.Id == invoiceId);
+
+            if (invoice is null) return null;
+
+            var invoiceDecision = ApprovalRules.CanDecide(approval.Status, approval.RequestedById,
+                                                          _users.GetUserId(User));
+
+            return new ApprovalReviewViewModel
+            {
+                Approval = approval,
+                Invoice = invoice,
+                Projects = invoice.Project?.Name ?? "",
+                CanDecide = invoiceDecision.Ok,
+                WhyNot = invoiceDecision.Message,
+                MinimumReasonLength = ApprovalRules.MinimumRejectionReasonLength
+            };
         }
 
         if ((approval.SupplierOrderId ?? request?.SupplierOrderId) is not int orderId) return null;

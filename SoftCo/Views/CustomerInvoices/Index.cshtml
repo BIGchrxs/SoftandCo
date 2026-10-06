@@ -1,0 +1,107 @@
+@model SoftCo.ViewModels.InvoiceListViewModel
+@using SoftCo.Models
+@{
+    ViewData["Title"] = "Invoices";
+    ViewData["Description"] = "What Soft & Co have billed, and what is still owed.";
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var canEdit = User.CanEditOrders();
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi"><p class="sc-label">Invoices</p><p class="sc-kpi-value">@Model.TotalCount.ToString("D2")</p><p class="sc-kpi-caption">Matching this view</p></div>
+    <div class="sc-kpi"><p class="sc-label">Drafts</p><p class="sc-kpi-value">@Model.Rows.Count(r => r.Status == CustomerInvoiceStatus.Draft).ToString("D2")</p><p class="sc-kpi-caption">Not yet issued, on this page</p></div>
+    <div class="sc-kpi"><p class="sc-label">Overdue</p><p class="sc-kpi-value">@Model.Rows.Count(r => r.IsOverdue(today)).ToString("D2")</p><p class="sc-kpi-caption">Past their due date, on this page</p></div>
+    <div class="sc-kpi"><p class="sc-label">Value on this page</p><p class="sc-kpi-value">@Model.PageGrandTotal.ToString("N2")</p><p class="sc-kpi-caption">Rand, incl VAT</p></div>
+</div>
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <div class="sc-filter-rows">
+            <div class="sc-tab-row">
+                <span class="sc-tab-label">Status</span>
+                <div class="sc-tabs">
+                    <a class="@(Model.Status == null && !Model.OverdueOnly ? "active" : "")" asp-action="Index">All</a>
+                    <a class="@(Model.Status == CustomerInvoiceStatus.Draft ? "active" : "")" asp-action="Index" asp-route-status="@CustomerInvoiceStatus.Draft">Draft</a>
+                    <a class="@(Model.Status == CustomerInvoiceStatus.PendingApproval ? "active" : "")" asp-action="Index" asp-route-status="@CustomerInvoiceStatus.PendingApproval">Awaiting approval</a>
+                    <a class="@(Model.Status == CustomerInvoiceStatus.Issued ? "active" : "")" asp-action="Index" asp-route-status="@CustomerInvoiceStatus.Issued">Issued</a>
+                    <a class="@(Model.OverdueOnly ? "active" : "")" asp-action="Index" asp-route-overdueOnly="true">Overdue</a>
+                </div>
+            </div>
+        </div>
+
+        @if (canEdit)
+        {
+            <a class="btn btn-primary" asp-action="Create">New invoice</a>
+        }
+    </div>
+
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Number</th>
+                    <th scope="col">Client</th>
+                    <th scope="col">Project</th>
+                    <th scope="col">Issued</th>
+                    <th scope="col">Due</th>
+                    <th scope="col" class="sc-num">Excl VAT</th>
+                    <th scope="col" class="sc-num">Total</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in Model.Rows)
+            {
+                <tr>
+                    <td>
+                        <a asp-action="Details" asp-route-id="@r.Id">@(r.InvoiceNumber ?? "Draft")</a>
+                        <span class="sc-cell-sub">@r.Status.Label()</span>
+                    </td>
+                    <td>@r.ClientName</td>
+                    <td class="sc-muted">@(r.ProjectName ?? "—")</td>
+                    <td class="sc-muted">@(r.IssueDate?.ToString("dd MMM yyyy") ?? "—")</td>
+                    <td class="sc-muted">
+                        @(r.DueDate?.ToString("dd MMM yyyy") ?? "—")
+                        @if (r.IsOverdue(today)) { <span class="sc-badge">Overdue</span> }
+                    </td>
+                    <td class="sc-num">@r.NetTotal.ToString("N2")</td>
+                    <td class="sc-num">@r.GrandTotal.ToString("N2")</td>
+                    <td>
+                        <div class="sc-row-actions">
+                            <a class="sc-row-link" asp-action="Details" asp-route-id="@r.Id">Open</a>
+                            <a class="sc-row-link" asp-action="Pdf" asp-route-id="@r.Id">PDF</a>
+                        </div>
+                    </td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="8" class="sc-empty">No invoices in this view. Create one to bill a client.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    @if (Model.TotalPages > 1)
+    {
+        <hr class="sc-rule" />
+        <div class="sc-row-actions">
+            @if (Model.HasPrevious)
+            {
+                <a class="sc-row-link" asp-action="Index" asp-route-page="@(Model.Page - 1)"
+                   asp-route-status="@Model.Status" asp-route-clientId="@Model.ClientId"
+                   asp-route-overdueOnly="@Model.OverdueOnly">Previous</a>
+            }
+            <span class="sc-muted">Page @Model.Page of @Model.TotalPages</span>
+            @if (Model.HasNext)
+            {
+                <a class="sc-row-link" asp-action="Index" asp-route-page="@(Model.Page + 1)"
+                   asp-route-status="@Model.Status" asp-route-clientId="@Model.ClientId"
+                   asp-route-overdueOnly="@Model.OverdueOnly">Next</a>
+            }
+        </div>
+    }
+</div>
+<p class="sc-data-note">The value shown is for the invoices on this page, not the whole filtered set. VAT is charged per line, so a single invoice can carry more than one rate.</p>

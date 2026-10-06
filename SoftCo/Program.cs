@@ -9,6 +9,7 @@ using SoftCo.Services.Documents;
 using SoftCo.Services.Email;
 using SoftCo.Services.ExchangeRates;
 using SoftCo.Services.Approvals;
+using SoftCo.Services.Invoicing;
 using SoftCo.Services.Numbering;
 using SoftCo.Services.Pdf;
 
@@ -96,6 +97,8 @@ builder.Services.AddScoped<IPurchaseOrderDocumentService, PurchaseOrderDocumentS
 // The approval workflow. The judgement lives in the pure ApprovalRules; these do the I/O.
 builder.Services.AddScoped<IPurchaseOrderApprovalService, PurchaseOrderApprovalService>();
 builder.Services.AddScoped<IPaymentReleaseService, PaymentReleaseService>();
+builder.Services.AddScoped<ICustomerInvoiceService, CustomerInvoiceService>();
+builder.Services.AddScoped<ICustomerInvoiceDocumentService, CustomerInvoiceDocumentService>();
 builder.Services.AddScoped<IApprovalNotifier, ApprovalNotifier>();
 
 // Email: in Development the composed message is written to App_Data/sent-email instead of being

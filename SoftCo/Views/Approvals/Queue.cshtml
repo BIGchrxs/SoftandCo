@@ -36,7 +36,7 @@
                 <tr>
                     <th scope="col">Reference</th>
                     <th scope="col">What</th>
-                    <th scope="col">Supplier</th>
+                    <th scope="col">Supplier / client</th>
                     <th scope="col" class="sc-num">Value (ZAR)</th>
                     <th scope="col">@(decided ? "Decided" : "Raised")</th>
                     <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -71,7 +71,11 @@
                     <td>
                         <div class="sc-row-actions">
                             <a class="sc-row-link" asp-action="Review" asp-route-id="@r.Id">@(decided ? "View" : "Review")</a>
-                            @if (r.OrderId is int orderId)
+                            @if (r.InvoiceId is int invoiceId)
+                            {
+                                <a class="sc-row-link" asp-controller="CustomerInvoices" asp-action="Details" asp-route-id="@invoiceId">Invoice</a>
+                            }
+                            else if (r.OrderId is int orderId)
                             {
                                 <a class="sc-row-link" asp-controller="Orders" asp-action="Details" asp-route-id="@orderId">Order</a>
                             }

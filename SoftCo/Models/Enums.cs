@@ -212,3 +212,26 @@ public enum ApprovalStatus
     Rejected  = 2,
     Withdrawn = 3
 }
+
+/// <summary>
+/// Where a client invoice has got to.
+///
+/// Draft is 0, as everywhere else in this system, so a new invoice starts there without anything
+/// having to say so. Issued and beyond are immutable: correcting an issued invoice is a credit note,
+/// which is what the VAT Act requires and what stops this becoming the spreadsheet it replaced.
+///
+/// PartPaid and Paid are driven by receipts rather than typed in - the same discipline
+/// <see cref="SettlementStatus"/> applies to supplier orders, and for the same reason: a status
+/// somebody maintains by hand drifts out of step with the money beside it.
+/// </summary>
+public enum CustomerInvoiceStatus
+{
+    Draft           = 0,
+    PendingApproval = 1,
+    Approved        = 2,
+    Issued          = 3,
+    PartPaid        = 4,
+    Paid            = 5,
+    Rejected        = 6,
+    Cancelled       = 7
+}

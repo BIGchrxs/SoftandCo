@@ -40,6 +40,168 @@ public sealed class MigraDocPdfRenderer : IPdfRenderer
         return buffer.ToArray();
     }
 
+
+    // --- Client invoice -----------------------------------------------------------------------
+
+    public byte[] RenderCustomerInvoice(CustomerInvoiceDocument inv)
+    {
+        var heading = inv.IsTaxInvoice ? "Tax invoice" : "Invoice";
+
+        var doc = NewDocument($"{heading} {inv.InvoiceNumber}", inv.From.Name);
+        var section = doc.LastSection;
+
+        Letterhead(section, inv.From);
+        Title(section, heading, inv.InvoiceNumber);
+        InvoiceParties(section, inv);
+        InvoiceLines(section, inv);
+        InvoiceTotals(section, inv);
+        Notes(section, inv.Notes);
+
+        var renderer = new PdfDocumentRenderer { Document = doc };
+        renderer.RenderDocument();
+
+        using var buffer = new MemoryStream();
+        renderer.PdfDocument.Save(buffer, closeStream: false);
+        return buffer.ToArray();
+    }
+
+    private static void InvoiceParties(Section section, CustomerInvoiceDocument inv)
+    {
+        var table = Grid(section, [9.0, 7.5]);
+        var row = table.AddRow();
+
+        var client = row.Cells[0].AddParagraph();
+        Label(client, "Invoice to");
+        client.AddLineBreak();
+        client.AddFormattedText(inv.To.Name).Bold = true;
+
+        foreach (var line in inv.To.AddressLines)
+        {
+            client.AddLineBreak();
+            client.AddText(line);
+        }
+
+        // The customer's VAT number belongs on a tax invoice when they are a vendor themselves.
+        if (inv.To.VatNumber is { Length: > 0 } clientVat)
+        {
+            client.AddLineBreak();
+            client.AddText("VAT " + clientVat);
+        }
+
+        var facts = row.Cells[1].AddParagraph();
+        Fact(facts, "Date issued", inv.IssueDate is DateOnly d ? Date(d) : "Not yet issued", first: true);
+        if (inv.DueDate is DateOnly due) Fact(facts, "Due", Date(due));
+        if (inv.ProjectName is { Length: > 0 } project) Fact(facts, "Project", project);
+        if (inv.ClientReference is { Length: > 0 } reference) Fact(facts, "Your reference", reference);
+
+        section.AddParagraph().Format.SpaceAfter = Unit.FromPoint(8);
+
+        // A draft that gets printed must not be mistakable for the real thing.
+        if (inv.StatusWatermark is { Length: > 0 } watermark)
+        {
+            var mark = section.AddParagraph(watermark.ToUpperInvariant());
+            mark.Format.Font.Size = 11;
+            mark.Format.Font.Color = Hex(PdfBrand.Accent);
+            mark.Format.SpaceAfter = Unit.FromPoint(8);
+        }
+    }
+
+    private static void InvoiceLines(Section section, CustomerInvoiceDocument inv)
+    {
+        var table = Grid(section, [6.8, 1.6, 2.4, 1.9, 3.8]);
+        table.Borders.Color = Hex(PdfBrand.Rule);
+
+        var head = table.AddRow();
+        head.Shading.Color = Hex(PdfBrand.BeigeDeep);
+        head.Borders.Bottom.Width = 0.75;
+        head.Borders.Bottom.Color = Hex(PdfBrand.Accent);
+        head.TopPadding = Unit.FromPoint(5);
+        head.BottomPadding = Unit.FromPoint(5);
+
+        HeaderCell(head.Cells[0], "Description");
+        HeaderCell(head.Cells[1], "Qty", right: true);
+        HeaderCell(head.Cells[2], "Unit price", right: true);
+        HeaderCell(head.Cells[3], "VAT", right: true);
+        HeaderCell(head.Cells[4], "Amount (excl VAT)", right: true);
+
+        foreach (var line in inv.Lines)
+        {
+            var row = table.AddRow();
+            row.TopPadding = Unit.FromPoint(4);
+            row.BottomPadding = Unit.FromPoint(4);
+            row.Borders.Bottom.Width = 0.25;
+            row.Borders.Bottom.Color = Hex(PdfBrand.Rule);
+
+            row.Cells[0].AddParagraph(line.Description);
+            Number(row.Cells[1], Amount(line.Quantity, "0.###"));
+            Number(row.Cells[2], Amount(line.UnitPriceExclVat));
+
+            // The rate, per line. A zero-rated line says so rather than showing a bare 0.00, because
+            // zero-rated and exempt are different things and the client may need to know which.
+            Number(row.Cells[3], line.VatRatePercent == 0m
+                ? line.VatTreatmentLabel
+                : Amount(line.VatRatePercent, "0.##") + "%");
+
+            Number(row.Cells[4], Amount(line.LineNetExclVat));
+        }
+    }
+
+    private static void InvoiceTotals(Section section, CustomerInvoiceDocument inv)
+    {
+        var table = Grid(section, [11.4, 5.1]);
+
+        void Line(string label, string value, bool strong = false)
+        {
+            var row = table.AddRow();
+            row.TopPadding = Unit.FromPoint(strong ? 6 : 2);
+
+            var l = row.Cells[0].AddParagraph();
+            l.Format.Alignment = ParagraphAlignment.Right;
+            Label(l, label);
+
+            var v = row.Cells[1].AddParagraph(value);
+            v.Format.Alignment = ParagraphAlignment.Right;
+            v.Format.Font.Name = PdfBrand.SansFont;
+
+            if (strong)
+            {
+                v.Format.Font.Size = 13;
+                v.Format.Font.Bold = true;
+                v.Format.Font.Color = Hex(PdfBrand.AccentStrong);
+            }
+        }
+
+        Line("Subtotal excl VAT", "R " + Amount(inv.NetTotal));
+
+        // Broken down by rate when there is more than one, so a client adding up the standard-rated
+        // lines gets the VAT figure they expect rather than querying it.
+        if (inv.HasMixedRates)
+        {
+            foreach (var (rate, net, vat) in inv.VatBreakdown())
+                Line($"VAT at {Amount(rate, "0.##")}% on {Amount(net)}", "R " + Amount(vat));
+        }
+        else
+        {
+            var rate = inv.Lines.Count > 0 ? inv.Lines[0].VatRatePercent : 0m;
+            Line($"VAT at {Amount(rate, "0.##")}%", "R " + Amount(inv.VatTotal));
+        }
+
+        Line("Total due", "R " + Amount(inv.GrandTotal), strong: true);
+    }
+
+    private static void Notes(Section section, string? notes)
+    {
+        if (notes is not { Length: > 0 }) return;
+
+        var heading = section.AddParagraph();
+        heading.Format.SpaceBefore = Unit.FromPoint(16);
+        Label(heading, "Notes");
+
+        var body = section.AddParagraph(notes);
+        body.Format.Font.Size = PdfBrand.LabelSizePt;
+        body.Format.Font.Color = Hex(PdfBrand.InkSoft);
+    }
+
     // --- Document shell ---------------------------------------------------------------------
 
     private static Document NewDocument(string title, string author)
@@ -240,18 +402,7 @@ public sealed class MigraDocPdfRenderer : IPdfRenderer
         SignatureLine(row.Cells[1], "Date");
     }
 
-    private static void Notes(Section section, PurchaseOrderDocument po)
-    {
-        if (po.Notes is not { Length: > 0 } notes) return;
-
-        var heading = section.AddParagraph();
-        heading.Format.SpaceBefore = Unit.FromPoint(14);
-        Label(heading, "Notes");
-
-        var body = section.AddParagraph(notes);
-        body.Format.Font.Size = PdfBrand.LabelSizePt;
-        body.Format.Font.Color = Hex(PdfBrand.InkSoft);
-    }
+    private static void Notes(Section section, PurchaseOrderDocument po) => Notes(section, po.Notes);
 
     // --- Small shared pieces ------------------------------------------------------------------
 

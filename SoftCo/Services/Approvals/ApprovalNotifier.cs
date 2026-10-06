@@ -24,6 +24,11 @@ public interface IApprovalNotifier
     Task NotifyPaymentApproversAsync(Approval approval, PaymentRequest request, string? link,
                                      CancellationToken ct = default);
 
+    /// <summary>
+    /// Tells the Financial Director a client invoice is waiting to be approved before it is issued.
+    /// </summary>
+    Task NotifyInvoiceApproversAsync(Approval approval, string? link, CancellationToken ct = default);
+
     /// <summary>Tells the person who submitted it what was decided.</summary>
     Task NotifySubmitterAsync(Approval approval, SupplierOrder order, string? link,
                               CancellationToken ct = default);
@@ -202,6 +207,57 @@ public sealed class ApprovalNotifier : IApprovalNotifier
             """;
 
         await SendAsync(approval, new EmailMessage(submitter.Email, DisplayName(submitter), subject, body, []), ct);
+    }
+
+    public async Task NotifyInvoiceApproversAsync(Approval approval, string? link,
+                                                  CancellationToken ct = default)
+    {
+        var invoice = await _db.CustomerInvoices.AsNoTracking()
+            .Include(i => i.Client)
+            .Include(i => i.Project)
+            .FirstOrDefaultAsync(i => i.Id == approval.CustomerInvoiceId, ct);
+
+        if (invoice is null) return;
+
+        var approvers = await ActiveApproversAsync(ct);
+
+        if (approvers.Count == 0)
+        {
+            approval.NotificationSent = false;
+            approval.NotificationError =
+                "No active Financial Director account to notify. The invoice is in the approval queue.";
+            return;
+        }
+
+        var subject = $"Invoice approval needed - {invoice.Client?.Name} - R {invoice.GrandTotal:N2}";
+
+        foreach (var approver in approvers)
+        {
+            var body = $"""
+                Hi {DisplayName(approver)},
+
+                {approval.RequestedByName ?? "A member of staff"} has asked you to approve a client
+                invoice before it is issued.
+
+                Client         {invoice.Client?.Name}
+                Project        {invoice.Project?.Name ?? "-"}
+                Your ref       {invoice.ClientReference ?? "-"}
+
+                Excl VAT       R {invoice.NetTotal:N2}
+                VAT            R {invoice.VatTotal:N2}
+                Total          R {invoice.GrandTotal:N2}
+                {(string.IsNullOrWhiteSpace(approval.RequestNote) ? "" : $"Note           {approval.RequestNote}\n")}
+                Approving lets staff issue it. Issuing allocates an invoice number and makes the
+                document immutable - after that it can only be corrected with a credit note.
+
+                {(link is null ? "" : $"Approve or reject: {link}")}
+                """;
+
+            await SendAsync(approval, new EmailMessage(approver.Email!, DisplayName(approver),
+                                                       subject, body, []), ct);
+        }
+
+        approval.NotifiedTo = string.Join(", ", approvers.Select(a => a.Email));
     }
 
     private async Task<List<ApplicationUser>> ActiveApproversAsync(CancellationToken ct)

@@ -19,6 +19,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<PaymentContact> PaymentContacts => Set<PaymentContact>();
     public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
     public DbSet<Approval> Approvals => Set<Approval>();
+    public DbSet<CustomerInvoice> CustomerInvoices => Set<CustomerInvoice>();
+    public DbSet<CustomerInvoiceLine> CustomerInvoiceLines => Set<CustomerInvoiceLine>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -92,11 +94,64 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
              .HasForeignKey(x => x.PaymentRequestId)
              .OnDelete(DeleteBehavior.Restrict);
 
+            // The third subject. The column and the check constraint have been here since the
+            // approvals table was created; this is the foreign key that was waiting for the
+            // invoice table to exist.
+            e.HasOne(x => x.CustomerInvoice)
+             .WithMany(i => i.Approvals)
+             .HasForeignKey(x => x.CustomerInvoiceId)
+             .OnDelete(DeleteBehavior.Restrict);
+
             // The Financial Director's queue: open requests, newest first, by kind.
             e.HasIndex(x => new { x.Status, x.Kind, x.RequestedAt });
 
             // "What has this order been through?" on the detail page.
             e.HasIndex(x => x.SupplierOrderId);
+        });
+
+        // --- CustomerInvoice -----------------------------------------------------------------
+        b.Entity<CustomerInvoice>(e =>
+        {
+            // Allocated on issue, so it must stay nullable while a draft is being worked on - the
+            // same filtered unique index SupplierOrder.PoNumber uses.
+            e.HasIndex(x => x.InvoiceNumber).IsUnique().HasFilter("\"InvoiceNumber\" IS NOT NULL");
+
+            e.HasOne(x => x.Client)
+             .WithMany()
+             .HasForeignKey(x => x.ClientId)
+             // An invoiced client is part of the financial record and cannot be deleted away from
+             // the invoice that names them.
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Project)
+             .WithMany()
+             .HasForeignKey(x => x.ProjectId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // The grid filters on status first, then narrows by client or project.
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.ClientId);
+            e.HasIndex(x => x.ProjectId);
+            e.HasIndex(x => x.DueDate);
+            e.HasIndex(x => x.SyncStatus);
+
+            // Issuing an invoice depends on knowing it has not moved underneath the person issuing
+            // it, exactly as approving an order does.
+            e.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid")
+             .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
+        });
+
+        // --- CustomerInvoiceLine -------------------------------------------------------------
+        b.Entity<CustomerInvoiceLine>(e =>
+        {
+            e.HasOne(x => x.CustomerInvoice)
+             .WithMany(i => i.Lines)
+             .HasForeignKey(x => x.CustomerInvoiceId)
+             // Cascade, unlike everything else here: a line has no meaning apart from its invoice,
+             // and only a draft can be deleted at all.
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => x.CustomerInvoiceId);
         });
 
         // --- SupplierOrder -------------------------------------------------------------------

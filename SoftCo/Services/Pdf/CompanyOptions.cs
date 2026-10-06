@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SoftCo.Services.Pdf;
 
 /// <summary>
@@ -33,6 +35,17 @@ public sealed class CompanyOptions
     public string? VatNumber { get; set; }
 
     public bool IsVatRegistered { get; set; } = true;
+
+    /// <summary>
+    /// The standard rate applied to <b>new</b> invoice lines. 15% in South Africa at the time of
+    /// writing; it was 14% until 2018 and a further rise was tabled and withdrawn in 2025.
+    ///
+    /// Configuration, never a constant in the code - and read only when a line is created. Once
+    /// saved, the rate is frozen on the line, so changing this re-prices nothing that already
+    /// exists. That is the whole reason it is stored per line rather than looked up at render time.
+    /// </summary>
+    [Range(0, 100)]
+    public decimal StandardVatRatePercent { get; set; } = 15m;
 
     /// <summary>The letterhead's address block, blanks dropped.</summary>
     public IReadOnlyList<string> LetterheadLines()

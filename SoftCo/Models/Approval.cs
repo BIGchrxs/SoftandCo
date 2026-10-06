@@ -40,11 +40,12 @@ public class Approval
     public PaymentRequest? PaymentRequest { get; set; }
 
     /// <summary>
-    /// Set from Phase 6, when client invoices exist. The column and the check constraint are here
-    /// from the start so that adding the invoice table later is a foreign key, not a rewrite of the
-    /// constraint every existing row is validated against.
+    /// The third subject. The column and the check constraint predate the invoice table, so adding
+    /// it was a foreign key rather than a rewrite of the constraint every existing row is validated
+    /// against.
     /// </summary>
     public int? CustomerInvoiceId { get; set; }
+    public CustomerInvoice? CustomerInvoice { get; set; }
 
     // --- What was being approved -------------------------------------------------------------
 

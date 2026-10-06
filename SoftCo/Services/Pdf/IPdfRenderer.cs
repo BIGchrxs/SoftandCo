@@ -18,4 +18,6 @@ namespace SoftCo.Services.Pdf;
 public interface IPdfRenderer
 {
     byte[] RenderPurchaseOrder(PurchaseOrderDocument document);
+
+    byte[] RenderCustomerInvoice(CustomerInvoiceDocument document);
 }

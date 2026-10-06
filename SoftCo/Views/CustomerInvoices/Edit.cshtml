@@ -1,0 +1,118 @@
+@model SoftCo.ViewModels.InvoiceEditViewModel
+@using SoftCo.Models
+@{
+    var isNew = Model.IsNew;
+    ViewData["Title"] = isNew ? "New invoice" : "Edit invoice";
+}
+
+<div class="sc-card">
+    <form method="post" asp-action="@(isNew ? "Create" : "Edit")">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="All" class="sc-errors"></div>
+
+        <p class="sc-label">Who and what for</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="ClientId"></label>
+                <select class="form-select" asp-for="ClientId" asp-items="Model.Clients">
+                    <option value="">Choose a client…</option>
+                </select>
+                <span asp-validation-for="ClientId" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="ProjectId"></label>
+                <select class="form-select" asp-for="ProjectId" asp-items="Model.Projects">
+                    <option value="">No project</option>
+                </select>
+                <span class="sc-hint">Needed for this invoice to count towards the project's gross profit.</span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="ClientReference"></label>
+                <input class="form-control" asp-for="ClientReference" />
+                <span class="sc-hint">The client's own order number, printed so they can match it up.</span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="PaymentTermsDays"></label>
+                <input class="form-control" asp-for="PaymentTermsDays" type="number" min="0" max="365" />
+                <span class="sc-hint">The due date is set from this when the invoice is issued, then fixed.</span>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <div class="sc-card-head">
+            <p class="sc-label" style="margin-bottom:0">Lines</p>
+            <label class="sc-check">
+                <input type="checkbox" asp-for="PricesEnteredInclusive" />
+                <span>The prices I am typing include VAT</span>
+            </label>
+        </div>
+
+        @* Converted once at save; what gets stored is always exclusive, because deriving exclusive
+           from a 2dp inclusive price over and over loses cents. *@
+        <p class="sc-hint">
+            Standard rate is currently @Model.StandardRatePercent.ToString("0.##")%. Zero-rated is for
+            exported goods; exempt is a different thing again and rarely applies here. The rate is
+            fixed on each line when the invoice is saved, so a later rate change never re-prices it.
+        </p>
+
+        <div class="sc-table-wrap">
+            <table class="sc-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Description</th>
+                        <th scope="col" class="sc-num">Quantity</th>
+                        <th scope="col" class="sc-num">Unit price</th>
+                        <th scope="col">VAT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for (var i = 0; i < Model.Lines.Count; i++)
+                {
+                    <tr>
+                        <td><input class="form-control" asp-for="Lines[i].Description" placeholder="Leave blank to remove the line" /></td>
+                        <td><input class="form-control sc-num" asp-for="Lines[i].Quantity" type="number" step="0.001" min="0" /></td>
+                        <td><input class="form-control sc-num" asp-for="Lines[i].UnitPrice" type="number" step="0.01" min="0" /></td>
+                        <td>
+                            <select class="form-select" asp-for="Lines[i].VatTreatment">
+                                @foreach (VatTreatment t in Enum.GetValues<VatTreatment>())
+                                {
+                                    <option value="@t" selected="@(Model.Lines[i].VatTreatment == t)">@t.Label()</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <p class="sc-hint">Save to add another line. Clearing a description removes that line.</p>
+
+        <hr class="sc-rule" />
+
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="Notes"></label>
+                <textarea class="form-control" asp-for="Notes" rows="3"></textarea>
+            </div>
+            <div>
+                <label class="form-label" asp-for="InternalNotes"></label>
+                <textarea class="form-control" asp-for="InternalNotes" rows="3"></textarea>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+        <button type="submit" class="btn btn-primary">@(isNew ? "Create draft" : "Save changes")</button>
+        @if (isNew)
+        {
+            <a class="btn btn-secondary" asp-action="Index">Cancel</a>
+        }
+        else
+        {
+            <a class="btn btn-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a>
+        }
+    </form>
+</div>
+
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

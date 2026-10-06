@@ -1,0 +1,148 @@
+@model SoftCo.ViewModels.InvoiceDetailsViewModel
+@using SoftCo.Models
+@{
+    var i = Model.Invoice;
+    ViewData["Title"] = i.InvoiceNumber ?? "Draft invoice";
+    var canEdit = Model.CanEdit;
+    var overdue = i.IsOverdue(Model.Today);
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <div>
+            <p class="sc-label" style="margin-bottom:.25rem">@Model.ClientName</p>
+            <h2 style="margin:0">@(i.InvoiceNumber ?? "Draft invoice")</h2>
+        </div>
+        <div class="sc-actions">
+            <a class="btn btn-secondary" asp-action="Pdf" asp-route-id="@i.Id">Open the PDF</a>
+            @if (canEdit)
+            {
+                <a class="btn btn-secondary" asp-action="Edit" asp-route-id="@i.Id">Edit</a>
+            }
+        </div>
+    </div>
+
+    <dl class="sc-dl">
+        <div><dt>Status</dt><dd><span class="sc-badge @(i.IsIssued ? "sc-badge-solid" : "")">@i.Status.Label()</span></dd></div>
+        <div><dt>Project</dt><dd>@(Model.ProjectName ?? "—")</dd></div>
+        <div><dt>Your reference</dt><dd>@(i.ClientReference ?? "—")</dd></div>
+        <div><dt>Issued</dt><dd>@(i.IssueDate?.ToString("dd MMM yyyy") ?? "Not yet issued")</dd></div>
+        <div><dt>Due</dt><dd>@(i.DueDate?.ToString("dd MMM yyyy") ?? "—") @if (overdue) { <span class="sc-badge">Overdue</span> }</dd></div>
+        <div><dt>Terms</dt><dd>@i.PaymentTermsDays days</dd></div>
+    </dl>
+</div>
+
+<div class="sc-card">
+    <p class="sc-label">Lines</p>
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Description</th>
+                    <th scope="col" class="sc-num">Qty</th>
+                    <th scope="col" class="sc-num">Unit (excl VAT)</th>
+                    <th scope="col" class="sc-num">VAT</th>
+                    <th scope="col" class="sc-num">Amount (excl)</th>
+                    <th scope="col" class="sc-num">VAT amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var l in i.Lines.OrderBy(x => x.Sort))
+            {
+                <tr>
+                    <td>@l.Description</td>
+                    <td class="sc-num">@l.Quantity.ToString("0.###")</td>
+                    <td class="sc-num">@l.UnitPriceExclVat.ToString("N2")</td>
+                    @* The rate frozen on the line, not today's rate. *@
+                    <td class="sc-num">@(l.VatRatePercent == 0 ? l.VatTreatment.Label() : l.VatRatePercent.ToString("0.##") + "%")</td>
+                    <td class="sc-num">@l.LineNetExclVat.ToString("N2")</td>
+                    <td class="sc-num">@l.LineVatAmount.ToString("N2")</td>
+                </tr>
+            }
+            @if (i.Lines.Count == 0)
+            { <tr><td colspan="6" class="sc-empty">No lines yet. Edit the invoice to add what is being charged for.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+
+    <hr class="sc-rule" />
+    <dl class="sc-dl">
+        <div><dt>Subtotal excl VAT</dt><dd>R @i.NetTotal.ToString("N2")</dd></div>
+        <div><dt>VAT</dt><dd>R @i.VatTotal.ToString("N2")</dd></div>
+        <div><dt>Total due</dt><dd><strong>R @i.GrandTotal.ToString("N2")</strong></dd></div>
+    </dl>
+    <p class="sc-data-note">VAT is calculated and rounded on each line, then added up &mdash; so the total always matches the rows above it.</p>
+</div>
+
+@* The workflow panel. One place decides what can happen next, so the screen never offers an action
+   the service would refuse. *@
+<div class="sc-card @(i.Status is CustomerInvoiceStatus.PendingApproval or CustomerInvoiceStatus.Rejected ? "sc-notice" : "")">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Approval</p>
+        <span class="sc-badge @(i.IsIssued ? "sc-badge-solid" : "")">@i.Status.Label()</span>
+    </div>
+
+    @{
+        var decision = i.Approvals.Where(a => a.DecidedAt != null).OrderByDescending(a => a.DecidedAt).FirstOrDefault();
+    }
+
+    @switch (i.Status)
+    {
+        case CustomerInvoiceStatus.Draft:
+            <p class="sc-muted">Not yet submitted. Nothing has been issued and the client has not been billed.</p>
+            break;
+        case CustomerInvoiceStatus.PendingApproval:
+            <p class="sc-muted">With the Financial Director. It cannot be edited or issued until they decide.</p>
+            break;
+        case CustomerInvoiceStatus.Approved:
+            <p class="sc-muted">Approved. Issuing allocates an invoice number and makes this immutable.</p>
+            break;
+        case CustomerInvoiceStatus.Rejected:
+            <p class="sc-muted">Sent back. Make the changes asked for and submit it again.</p>
+            break;
+        default:
+            <p class="sc-muted">
+                Issued@(i.IssuedByName is { Length: > 0 } by ? $" by {by}" : "").
+                An issued invoice is a tax document and cannot be changed &mdash; correct it with a credit note.
+            </p>
+            break;
+    }
+
+    @if (decision is not null && !string.IsNullOrWhiteSpace(decision.DecisionReason))
+    {
+        <p class="sc-label" style="margin-top:1rem">Reason</p>
+        <p class="sc-muted">@decision.DecisionReason <span class="sc-cell-sub">@decision.DecidedByName · @decision.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></p>
+    }
+
+    @if (User.CanEditOrders())
+    {
+        <hr class="sc-rule" />
+        <div class="sc-row-actions">
+            @if (i.Status is CustomerInvoiceStatus.Draft or CustomerInvoiceStatus.Rejected)
+            {
+                <form method="post" asp-action="Submit" asp-route-id="@i.Id">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-primary">Send for approval</button>
+                </form>
+            }
+            else if (i.Status is CustomerInvoiceStatus.PendingApproval or CustomerInvoiceStatus.Approved)
+            {
+                <form method="post" asp-action="Withdraw" asp-route-id="@i.Id">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">Withdraw</button>
+                </form>
+            }
+            @if (i.Status == CustomerInvoiceStatus.Approved)
+            {
+                <form method="post" asp-action="Issue" asp-route-id="@i.Id">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-primary">Issue invoice</button>
+                </form>
+            }
+        </div>
+    }
+</div>
+
+<p><a asp-action="Index">&larr; Back to invoices</a></p>

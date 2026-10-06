@@ -1,6 +1,7 @@
 using System.Text;
 using SoftCo.Models;
 using SoftCo.Services.Approvals;
+using SoftCo.Services.Invoicing;
 using SoftCo.Services;
 using SoftCo.Services.Documents;
 
@@ -388,6 +389,102 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
     };
     Check(!failed.IsAwaitingApproval && !failed.IsReadyToRelease,
           "A released request that failed to send is neither waiting nor ready");
+}
+
+
+// --- Invoice arithmetic -----------------------------------------------------------------
+// Written before the implementation. The maths is the deliverable here: every figure a client
+// sees, and every figure SARS sees, comes out of this.
+{
+    // Rounding is away from zero, NOT the .NET default. Math.Round(decimal, int) uses banker's
+    // rounding, which rounds a half to the nearest even digit - so 0.125 becomes 0.12 and the
+    // shaved cent lands in the taxpayer's favour, consistently, across every line of every
+    // invoice. SARS will not thank anyone for that.
+    Check(InvoiceMath.Round(0.125m) == 0.13m, "A half rounds away from zero, not to even");
+    Check(InvoiceMath.Round(0.145m) == 0.15m, "0.145 rounds up, where banker's rounding gives 0.14");
+    Check(InvoiceMath.Round(0.135m) == 0.14m, "0.135 rounds up");
+    Check(InvoiceMath.Round(-0.125m) == -0.13m, "Away from zero works downwards too");
+    Check(InvoiceMath.Round(1.004m) == 1.00m, "Below the half still rounds down");
+    Check(InvoiceMath.Round(10m) == 10.00m, "A whole number is unchanged");
+
+    // Line net: quantity times unit price, rounded once.
+    Check(InvoiceMath.Net(3m, 150.00m) == 450.00m, "Three at 150 is 450");
+    Check(InvoiceMath.Net(2.5m, 19.99m) == 49.98m, "49.975 rounds away from zero to 49.98");
+    Check(InvoiceMath.Net(0m, 100m) == 0m, "Nothing ordered is nothing owed");
+
+    // VAT is computed per line and rounded there.
+    Check(InvoiceMath.Vat(100.00m, 15m) == 15.00m, "15% of 100 is 15");
+    Check(InvoiceMath.Vat(1000.00m, 15m) == 150.00m, "15% of 1000 is 150");
+    Check(InvoiceMath.Vat(100.00m, 0m) == 0m, "Zero-rated lines carry no VAT");
+    Check(InvoiceMath.Vat(0.10m, 15m) == 0.02m, "0.015 rounds away from zero to 0.02");
+
+    // The rate is never assumed. 14% was the rate until 2018 and a 2025 rise was tabled and
+    // withdrawn; an invoice issued at 14% must still re-render at 14% forever.
+    Check(InvoiceMath.Vat(100.00m, 14m) == 14.00m, "A historical 14% line is computed at 14%");
+
+    // Interior clients are quoted VAT-inclusive, so the entry form accepts inclusive prices and
+    // back-calculates once, at save. Exclusive is what gets stored, because deriving excl from a
+    // 2dp inclusive price repeatedly is lossy.
+    Check(InvoiceMath.ExclusiveFromInclusive(115.00m, 15m) == 100.00m, "115 inclusive is 100 exclusive");
+    Check(InvoiceMath.ExclusiveFromInclusive(11.50m, 15m) == 10.00m, "11.50 inclusive is 10.00 exclusive");
+    Check(InvoiceMath.ExclusiveFromInclusive(100.00m, 0m) == 100.00m, "Zero-rated: inclusive and exclusive agree");
+
+    // Round trip: excl -> vat -> incl -> excl must land back where it started.
+    foreach (var incl in new[] { 115.00m, 1150.00m, 57.50m, 9999.99m })
+    {
+        var excl = InvoiceMath.ExclusiveFromInclusive(incl, 15m);
+        var back = excl + InvoiceMath.Vat(excl, 15m);
+        Check(back == incl, $"Inclusive {incl} survives the round trip");
+    }
+
+    // A whole line in one call.
+    var line = InvoiceMath.Line(2m, 500.00m, 15m);
+    Check(line.NetExclVat == 1000.00m && line.VatAmount == 150.00m && line.TotalInclVat == 1150.00m,
+          "A line reports net, VAT and total consistently");
+
+    // VAT is summed from the lines, never computed on the subtotal. Three lines of 0.10 at 15%
+    // round to 0.02 each - 0.06 - while 15% of the 0.30 subtotal is 0.05. The header must agree
+    // with the rows the client can see and add up themselves; that mismatch is the single most
+    // common invoice complaint there is.
+    var pennies = new[] { InvoiceMath.Line(1m, 0.10m, 15m), InvoiceMath.Line(1m, 0.10m, 15m), InvoiceMath.Line(1m, 0.10m, 15m) };
+    var pennyTotals = InvoiceMath.Totals(pennies);
+    Check(pennyTotals.VatTotal == 0.06m, "VAT sums the per-line amounts, not 15% of the subtotal");
+    Check(InvoiceMath.Vat(0.30m, 15m) == 0.05m, "and 15% of the subtotal really would differ");
+    Check(pennyTotals.NetTotal == 0.30m && pennyTotals.GrandTotal == 0.36m, "Totals stay internally consistent");
+
+    // A mixed invoice. T.M Mauritius makes this concrete: goods leaving South Africa are
+    // zero-rated while local delivery on the same job is standard-rated, so one invoice carries
+    // both and a single header rate could not represent it.
+    var mixed = InvoiceMath.Totals([
+        InvoiceMath.Line(1m, 1000.00m, 15m),   // local delivery
+        InvoiceMath.Line(1m, 500.00m, 0m)      // exported goods
+    ]);
+    Check(mixed.NetTotal == 1500.00m, "Mixed invoice nets to 1500");
+    Check(mixed.VatTotal == 150.00m, "VAT applies only to the standard-rated line");
+    Check(mixed.GrandTotal == 1650.00m, "Mixed invoice totals to 1650");
+
+    // The header is the sum of the rows, by construction.
+    var many = new[]
+    {
+        InvoiceMath.Line(3m, 149.99m, 15m),
+        InvoiceMath.Line(1m, 2500.00m, 15m),
+        InvoiceMath.Line(7m, 33.33m, 0m),
+        InvoiceMath.Line(2m, 19.95m, 15m)
+    };
+    var totals = InvoiceMath.Totals(many);
+    Check(totals.NetTotal == many.Sum(l => l.NetExclVat), "Net total is the sum of the line nets");
+    Check(totals.VatTotal == many.Sum(l => l.VatAmount), "VAT total is the sum of the line VAT");
+    Check(totals.GrandTotal == totals.NetTotal + totals.VatTotal, "Grand total is net plus VAT");
+    Check(totals.GrandTotal == many.Sum(l => l.TotalInclVat), "and equals the sum of the line totals");
+
+    var empty = InvoiceMath.Totals([]);
+    Check(empty.NetTotal == 0m && empty.VatTotal == 0m && empty.GrandTotal == 0m,
+          "An invoice with no lines totals to nothing, not a crash");
+
+    // A negative rate or quantity is not a rounding question, it is a bug upstream.
+    var threw = false;
+    try { InvoiceMath.Vat(100m, -1m); } catch (ArgumentOutOfRangeException) { threw = true; }
+    Check(threw, "A negative VAT rate is refused rather than quietly applied");
 }
 
 Console.WriteLine($"All {passed} checks passed.");

@@ -59,6 +59,19 @@ public static class EnumLabels
         _ => o.ToString()
     };
 
+    public static string Label(this CustomerInvoiceStatus s) => s switch
+    {
+        CustomerInvoiceStatus.Draft => "Draft",
+        CustomerInvoiceStatus.PendingApproval => "Awaiting approval",
+        CustomerInvoiceStatus.Approved => "Approved to issue",
+        CustomerInvoiceStatus.Issued => "Issued",
+        CustomerInvoiceStatus.PartPaid => "Part paid",
+        CustomerInvoiceStatus.Paid => "Paid",
+        CustomerInvoiceStatus.Rejected => "Rejected",
+        CustomerInvoiceStatus.Cancelled => "Cancelled",
+        _ => s.ToString()
+    };
+
     public static string Label(this PaymentRequestStatus s) => s switch
     {
         PaymentRequestStatus.Sent => "Sent",

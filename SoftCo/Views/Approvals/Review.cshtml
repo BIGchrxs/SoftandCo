@@ -4,8 +4,13 @@
     var a = Model.Approval;
     var o = Model.Order;
     var pr = Model.PaymentRequest;
-    ViewData["Title"] = $"Approve {o.PoNumber}";
-    var open = a.Status == ApprovalStatus.Pending;
+    var inv = Model.Invoice;
+
+    var reference = inv is not null
+        ? (inv.InvoiceNumber ?? "Draft invoice")
+        : (o?.PoNumber ?? "(not numbered)");
+
+    ViewData["Title"] = $"Approve {reference}";
 }
 
 @await Html.PartialAsync("_Flash")
@@ -14,33 +19,85 @@
     <div class="sc-card-head">
         <div>
             <p class="sc-label" style="margin-bottom:.25rem">@a.Kind.Label() · @a.Status.Label()</p>
-            <h2 style="margin:0">@o.PoNumber</h2>
+            <h2 style="margin:0">@reference</h2>
         </div>
         <div class="sc-actions">
-            @if (!Model.IsPaymentRelease)
+            @if (inv is not null)
             {
-                <a class="btn btn-secondary" asp-controller="PurchaseOrders" asp-action="Preview" asp-route-id="@o.Id">Open the purchase order</a>
+                <a class="btn btn-secondary" asp-controller="CustomerInvoices" asp-action="Pdf" asp-route-id="@inv.Id">Open the invoice</a>
+                <a class="btn btn-secondary" asp-controller="CustomerInvoices" asp-action="Details" asp-route-id="@inv.Id">Full invoice record</a>
             }
-            <a class="btn btn-secondary" asp-controller="Orders" asp-action="Details" asp-route-id="@o.Id">Full order record</a>
+            else if (o is not null)
+            {
+                @if (!Model.IsPaymentRelease)
+                {
+                    <a class="btn btn-secondary" asp-controller="PurchaseOrders" asp-action="Preview" asp-route-id="@o.Id">Open the purchase order</a>
+                }
+                <a class="btn btn-secondary" asp-controller="Orders" asp-action="Details" asp-route-id="@o.Id">Full order record</a>
+            }
         </div>
     </div>
 
-    <dl class="sc-dl">
-        <div><dt>Supplier</dt><dd>@o.Supplier?.Name</dd></div>
-        <div><dt>Product</dt><dd>@o.ProductDescription</dd></div>
-        <div><dt>Project(s)</dt><dd>@(Model.Projects is { Length: > 0 } p ? p : "—")</dd></div>
-        <div><dt>Currency</dt><dd>@o.CurrencyCode at @o.ExchangeRate.ToString("N6")</dd></div>
-        <div><dt>Invoice value</dt><dd>@o.InvoiceValueForeign.ToString("N2") @o.CurrencyCode</dd></div>
-        <div><dt>Cargo readiness</dt><dd>@(o.CargoReadinessDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
-        @if (pr is not null)
+    @if (inv is not null)
+    {
+        <dl class="sc-dl">
+            <div><dt>Client</dt><dd>@inv.Client?.Name</dd></div>
+            <div><dt>Project</dt><dd>@(inv.Project?.Name ?? "—")</dd></div>
+            <div><dt>Lines</dt><dd>@inv.Lines.Count</dd></div>
+            <div><dt>Excl VAT</dt><dd>R @inv.NetTotal.ToString("N2")</dd></div>
+            <div><dt>VAT</dt><dd>R @inv.VatTotal.ToString("N2")</dd></div>
+            <div><dt>Terms</dt><dd>@inv.PaymentTermsDays days</dd></div>
+            <div><dt>Raised by</dt><dd>@a.RequestedByName<span class="sc-cell-sub">@a.RequestedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></dd></div>
+        </dl>
+
+        @if (inv.Lines.Count > 0)
         {
-            @* The decision is about paying a named person a named amount, so both are on the page. *@
-            <div><dt>Pay to</dt><dd>@pr.PaymentContact?.Name<span class="sc-cell-sub">@pr.PaymentContact?.Email</span></dd></div>
-            <div><dt>Invoice ref</dt><dd>@(o.InvoiceRef ?? "—")</dd></div>
-            <div><dt>Invoice attached</dt><dd>@(pr.AttachInvoice ? "Yes" : "No")</dd></div>
+            <div class="sc-table-wrap">
+                <table class="sc-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Description</th>
+                            <th scope="col" class="sc-num">Qty</th>
+                            <th scope="col" class="sc-num">Unit (excl)</th>
+                            <th scope="col" class="sc-num">VAT</th>
+                            <th scope="col" class="sc-num">Amount (excl)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var l in inv.Lines.OrderBy(x => x.Sort))
+                    {
+                        <tr>
+                            <td>@l.Description</td>
+                            <td class="sc-num">@l.Quantity.ToString("0.###")</td>
+                            <td class="sc-num">@l.UnitPriceExclVat.ToString("N2")</td>
+                            <td class="sc-num">@(l.VatRatePercent == 0 ? l.VatTreatment.Label() : l.VatRatePercent.ToString("0.##") + "%")</td>
+                            <td class="sc-num">@l.LineNetExclVat.ToString("N2")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
         }
-        <div><dt>Raised by</dt><dd>@a.RequestedByName<span class="sc-cell-sub">@a.RequestedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></dd></div>
-    </dl>
+    }
+    else if (o is not null)
+    {
+        <dl class="sc-dl">
+            <div><dt>Supplier</dt><dd>@o.Supplier?.Name</dd></div>
+            <div><dt>Product</dt><dd>@o.ProductDescription</dd></div>
+            <div><dt>Project(s)</dt><dd>@(Model.Projects is { Length: > 0 } p ? p : "—")</dd></div>
+            <div><dt>Currency</dt><dd>@o.CurrencyCode at @o.ExchangeRate.ToString("N6")</dd></div>
+            <div><dt>Supplier invoice value</dt><dd>@o.InvoiceValueForeign.ToString("N2") @o.CurrencyCode</dd></div>
+            <div><dt>Cargo readiness</dt><dd>@(o.CargoReadinessDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
+            @if (pr is not null)
+            {
+                @* The decision is about paying a named person a named amount, so both are on the page. *@
+                <div><dt>Pay to</dt><dd>@pr.PaymentContact?.Name<span class="sc-cell-sub">@pr.PaymentContact?.Email</span></dd></div>
+                <div><dt>Supplier invoice ref</dt><dd>@(o.InvoiceRef ?? "—")</dd></div>
+                <div><dt>Invoice attached</dt><dd>@(pr.AttachInvoice ? "Yes" : "No")</dd></div>
+            }
+            <div><dt>Raised by</dt><dd>@a.RequestedByName<span class="sc-cell-sub">@a.RequestedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></dd></div>
+        </dl>
+    }
 
     @if (!string.IsNullOrWhiteSpace(a.RequestNote))
     {
@@ -51,12 +108,21 @@
 
     <hr class="sc-rule" />
 
-    @* The one number the decision is about. Stored on the approval, not read back off the order,
+    @* The one number the decision is about. Stored on the approval, not read back off the subject,
        so it stays what was actually put in front of the approver. *@
     <div class="sc-approve-amount">
         <p class="sc-label">You are approving</p>
         <p class="sc-approve-value">R @a.AmountZarAtRequest.ToString("N2")</p>
-        @if (Model.IsPaymentRelease)
+
+        @if (Model.IsInvoice)
+        {
+            <p class="sc-muted">
+                Approving lets staff issue this invoice to @inv?.Client?.Name. Issuing allocates an
+                invoice number and makes the document immutable &mdash; after that it can only be
+                corrected with a credit note.
+            </p>
+        }
+        else if (Model.IsPaymentRelease)
         {
             <p class="sc-muted">
                 Approving lets staff send a payment request to @pr?.PaymentContact?.Name.
@@ -67,7 +133,7 @@
         else
         {
             <p class="sc-muted">
-                Approving commits Soft &amp; Co to this amount with @o.Supplier?.Name.
+                Approving commits Soft &amp; Co to this amount with @o?.Supplier?.Name.
                 If the order is changed afterwards it will have to be approved again before it can be issued.
             </p>
         }
@@ -130,7 +196,7 @@ else
     </div>
 }
 
-@if (open && a.NotificationSent == false && !string.IsNullOrWhiteSpace(a.NotificationError))
+@if (a.Status == ApprovalStatus.Pending && !a.NotificationSent && !string.IsNullOrWhiteSpace(a.NotificationError))
 {
     <p class="sc-data-note">Notification: @a.NotificationError</p>
 }

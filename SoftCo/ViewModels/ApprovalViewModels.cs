@@ -10,6 +10,7 @@ public class ApprovalRowViewModel
 {
     public int Id { get; set; }
     public int? OrderId { get; set; }
+    public int? InvoiceId { get; set; }
 
     public ApprovalKind Kind { get; set; }
     public ApprovalStatus Status { get; set; }
@@ -37,7 +38,14 @@ public class ApprovalRowViewModel
 public class ApprovalReviewViewModel
 {
     public Approval Approval { get; set; } = null!;
-    public SupplierOrder Order { get; set; } = null!;
+
+    /// <summary>Null for a client invoice, which has no supplier order behind it.</summary>
+    public SupplierOrder? Order { get; set; }
+
+    /// <summary>Set only for a client invoice.</summary>
+    public CustomerInvoice? Invoice { get; set; }
+
+    public bool IsInvoice => Approval.Kind == ApprovalKind.CustomerInvoice;
 
     /// <summary>
     /// Set only for a payment release. The order is still carried, because the decision is about

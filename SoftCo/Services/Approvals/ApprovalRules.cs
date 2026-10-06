@@ -124,6 +124,74 @@ public static class ApprovalRules
             ? RuleResult.Allowed
             : RuleResult.Refuse("There is nothing waiting for approval on this order.");
 
+    // --- Client invoices ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether an invoice is complete enough to put to the Financial Director.
+    ///
+    /// A zero-total invoice is allowed through deliberately - a fully zero-rated export is a real
+    /// invoice with real VAT consequences - but one with no lines at all is not a document anybody
+    /// can make a decision about.
+    /// </summary>
+    public static RuleResult CanSubmitInvoice(CustomerInvoiceStatus status, bool hasClient, int lineCount)
+    {
+        if (status == CustomerInvoiceStatus.PendingApproval)
+            return RuleResult.Refuse("This invoice is already waiting for approval.");
+
+        if (status is CustomerInvoiceStatus.Issued or CustomerInvoiceStatus.PartPaid
+                   or CustomerInvoiceStatus.Paid)
+            return RuleResult.Refuse("This invoice has already been issued.");
+
+        if (status == CustomerInvoiceStatus.Cancelled)
+            return RuleResult.Refuse("This invoice has been cancelled.");
+
+        if (!hasClient)
+            return RuleResult.Refuse("Choose the client before sending this for approval.");
+
+        if (lineCount == 0)
+            return RuleResult.Refuse("Add at least one line before sending this for approval.");
+
+        return RuleResult.Allowed;
+    }
+
+    /// <summary>
+    /// Whether an approved invoice may be issued.
+    ///
+    /// Issuing allocates a number from a series a tax authority expects to be unbroken, and makes
+    /// the document immutable. It is the point of no return, so it happens once and only from
+    /// Approved.
+    /// </summary>
+    public static RuleResult CanIssueInvoice(CustomerInvoiceStatus status, decimal grandTotal)
+    {
+        if (status is CustomerInvoiceStatus.Issued or CustomerInvoiceStatus.PartPaid
+                   or CustomerInvoiceStatus.Paid)
+            return RuleResult.Refuse("This invoice has already been issued.");
+
+        if (status != CustomerInvoiceStatus.Approved)
+            return RuleResult.Refuse("This invoice has not been approved yet.");
+
+        if (grandTotal < 0m)
+            return RuleResult.Refuse("An invoice cannot total a negative amount. Use a credit note instead.");
+
+        return RuleResult.Allowed;
+    }
+
+    /// <summary>
+    /// Whether an invoice may still be edited. Issued invoices are tax documents: the VAT Act
+    /// requires a credit note to reverse one, and letting staff edit them is precisely how this
+    /// system would quietly become the spreadsheet it replaced.
+    /// </summary>
+    public static RuleResult CanEditInvoice(CustomerInvoiceStatus status) => status switch
+    {
+        CustomerInvoiceStatus.Draft or CustomerInvoiceStatus.Rejected => RuleResult.Allowed,
+        CustomerInvoiceStatus.PendingApproval =>
+            RuleResult.Refuse("This invoice is waiting for approval. Withdraw it first if it needs changing."),
+        CustomerInvoiceStatus.Approved =>
+            RuleResult.Refuse("This invoice has been approved. Withdraw it first if it needs changing."),
+        CustomerInvoiceStatus.Cancelled => RuleResult.Refuse("This invoice has been cancelled."),
+        _ => RuleResult.Refuse("An issued invoice cannot be changed. Raise a credit note instead.")
+    };
+
     // --- Payment release ----------------------------------------------------------------------
 
     /// <summary>

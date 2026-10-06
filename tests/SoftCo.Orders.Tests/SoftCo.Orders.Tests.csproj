@@ -23,5 +23,6 @@
          most needs to be provable. -->
     <Compile Include="../../SoftCo/Services/Approvals/ApprovalRules.cs" Link="Approvals/ApprovalRules.cs" />
     <Compile Include="../../SoftCo/Services/Approvals/SubjectFingerprint.cs" Link="Approvals/SubjectFingerprint.cs" />
+    <Compile Include="../../SoftCo/Services/Invoicing/InvoiceMath.cs" Link="Invoicing/InvoiceMath.cs" />
   </ItemGroup>
 </Project>
