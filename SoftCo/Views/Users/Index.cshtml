@@ -19,8 +19,9 @@
     </div>
 
     <p class="sc-muted">
-        Everyone onboarded here gets the same standard access: orders, payments, documents and
-        payment requests. Administering users stays with administrators.
+        Staff get the day-to-day work: orders, payments, documents and payment requests. The
+        Financial Director approves what staff raise &mdash; and only approves, so nobody can sign
+        off their own work. Administering users stays with administrators.
     </p>
 
     <div class="sc-table-wrap">
@@ -44,7 +45,7 @@
                         @if (u.IsSelf) { <span class="sc-badge">You</span> }
                     </td>
                     <td class="sc-muted">@u.Email</td>
-                    <td class="sc-muted">@(u.Roles.Count == 0 ? "—" : string.Join(", ", u.Roles))</td>
+                    <td class="sc-muted">@(u.Roles.Count == 0 ? "—" : string.Join(", ", u.Roles.Select(SoftCo.Data.Roles.Label)))</td>
                     <td>
                         @if (!u.IsActive)
                         {
@@ -66,6 +67,22 @@
 
                             @* An administrator must not be able to switch off the account they are
                                using - the server refuses it too, this just avoids offering it. *@
+                            @* Administrators are not changed from here, and nobody changes their
+                               own access level - the server refuses both regardless. *@
+                            @if (!u.IsSelf && !u.Roles.Contains(SoftCo.Data.Roles.Admin))
+                            {
+                                var next = u.Roles.Contains(SoftCo.Data.Roles.FinancialDirector)
+                                    ? SoftCo.Data.Roles.Staff
+                                    : SoftCo.Data.Roles.FinancialDirector;
+
+                                <form method="post" asp-action="SetRole" class="sc-inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <input type="hidden" name="role" value="@next" />
+                                    <button type="submit" class="sc-linkish">Make @SoftCo.Data.Roles.Label(next)</button>
+                                </form>
+                            }
+
                             @if (!u.IsSelf)
                             {
                                 <form method="post" asp-action="SetActive" class="sc-inline-form">

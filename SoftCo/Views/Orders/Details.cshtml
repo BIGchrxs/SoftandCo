@@ -154,6 +154,8 @@
     }
 </div>
 
+@await Html.PartialAsync("_PoApproval", Model)
+
 @await Html.PartialAsync("_OrderDocuments", Model)
 
 @* The request-payment panel only renders once an invoice is on the record - there is nothing

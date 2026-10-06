@@ -17,5 +17,11 @@
 
     <!-- The PDF document model is deliberately free of EF types for the same reason. -->
     <Compile Include="../../SoftCo/Services/Pdf/Models/*.cs" Link="Pdf/%(Filename)%(Extension)" />
+
+    <!-- The approval rules and the fingerprint are deliberately free of EF and HTTP: who may decide
+         what, and whether an order still matches what was approved, is the part of this system that
+         most needs to be provable. -->
+    <Compile Include="../../SoftCo/Services/Approvals/ApprovalRules.cs" Link="Approvals/ApprovalRules.cs" />
+    <Compile Include="../../SoftCo/Services/Approvals/SubjectFingerprint.cs" Link="Approvals/SubjectFingerprint.cs" />
   </ItemGroup>
 </Project>

@@ -18,6 +18,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<OrderDocument> OrderDocuments => Set<OrderDocument>();
     public DbSet<PaymentContact> PaymentContacts => Set<PaymentContact>();
     public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
+    public DbSet<Approval> Approvals => Set<Approval>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -68,6 +69,36 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(x => x.ClientId);
         });
 
+        // --- Approval ------------------------------------------------------------------------
+        b.Entity<Approval>(e =>
+        {
+            // Exactly one subject, enforced by the database rather than by trusting every caller.
+            // CustomerInvoiceId has no foreign key yet - the table arrives in Phase 6 - but the
+            // column and this constraint exist now, so adding it later does not mean revalidating
+            // every row against a rewritten constraint.
+            e.ToTable(t => t.HasCheckConstraint(
+                "CK_Approvals_OneSubject",
+                "num_nonnulls(\"SupplierOrderId\", \"PaymentRequestId\", \"CustomerInvoiceId\") = 1"));
+
+            e.HasOne(x => x.SupplierOrder)
+             .WithMany(o => o.Approvals)
+             .HasForeignKey(x => x.SupplierOrderId)
+             // An approval is evidence of a decision. Deleting what it refers to must fail loudly,
+             // the same reasoning applied to SupplierOrder -> Supplier and PaymentRequest -> Contact.
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.PaymentRequest)
+             .WithMany()
+             .HasForeignKey(x => x.PaymentRequestId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // The Financial Director's queue: open requests, newest first, by kind.
+            e.HasIndex(x => new { x.Status, x.Kind, x.RequestedAt });
+
+            // "What has this order been through?" on the detail page.
+            e.HasIndex(x => x.SupplierOrderId);
+        });
+
         // --- SupplierOrder -------------------------------------------------------------------
         b.Entity<SupplierOrder>(e =>
         {
@@ -87,6 +118,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
             // Both grids filter on this first, so it leads every query.
             e.HasIndex(x => x.OrderType);
+
+            // The approval queue and the order grid both narrow on this.
+            e.HasIndex(x => x.PoApprovalStatus);
 
             // Optimistic concurrency via PostgreSQL's xmin system column. No column is added -
             // xmin already exists on every row - so this costs nothing in schema terms. It matters

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ using SoftCo.Data;
 using SoftCo.Models;
 using SoftCo.Services;
 using SoftCo.Services.Documents;
+using SoftCo.Services.Approvals;
 using SoftCo.Services.Email;
 using SoftCo.ViewModels;
 
@@ -23,15 +25,20 @@ public class OrdersController : Controller
     private readonly IPoNumberGenerator _poNumbers;
     private readonly IDocumentStore _documents;
     private readonly IEmailService _email;
+    private readonly IPurchaseOrderApprovalService _approvals;
+    private readonly UserManager<ApplicationUser> _users;
 
     public OrdersController(AppDbContext db, IAuditService audit, IPoNumberGenerator poNumbers,
-                            IDocumentStore documents, IEmailService email)
+                            IDocumentStore documents, IEmailService email,
+                            IPurchaseOrderApprovalService approvals, UserManager<ApplicationUser> users)
     {
         _db = db;
         _audit = audit;
         _poNumbers = poNumbers;
         _documents = documents;
         _email = email;
+        _approvals = approvals;
+        _users = users;
     }
 
     // --- Grid ----------------------------------------------------------------------------
@@ -95,6 +102,7 @@ public class OrdersController : Controller
             .Include(o => o.Payments)
             .Include(o => o.Documents)
             .Include(o => o.PaymentRequests).ThenInclude(r => r.PaymentContact)
+            .Include(o => o.Approvals)
             .AsSplitQuery()
             .FirstOrDefaultAsync(o => o.Id == id);
 
@@ -258,9 +266,18 @@ public class OrdersController : Controller
         foreach (var pid in wanted.Where(p => order.OrderProjects.All(op => op.ProjectId != p)))
             order.OrderProjects.Add(new OrderProject { ProjectId = pid });
 
+        // Approval is of a specific supplier, amount, rate and set of projects. If any of those
+        // just moved, the decision no longer describes this order, so it goes back to draft rather
+        // than being issued on terms nobody signed off. Runs inside this SaveChanges deliberately:
+        // the edit and the invalidation are one change or neither.
+        var invalidated = await _approvals.InvalidateIfChangedAsync(
+            order, new Actor(_users.GetUserId(User), User.Identity?.Name));
+
         await _db.SaveChangesAsync();
 
-        TempData["Flash"] = "Order updated.";
+        TempData["Flash"] = invalidated
+            ? "Order updated. It had already been approved, so it has been returned to draft and needs approving again."
+            : "Order updated.";
         return RedirectToAction(nameof(Details), new { id = order.Id });
     }
 

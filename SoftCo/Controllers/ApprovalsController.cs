@@ -1,0 +1,222 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SoftCo.Data;
+using SoftCo.Models;
+using SoftCo.Services.Approvals;
+using SoftCo.ViewModels;
+
+namespace SoftCo.Controllers;
+
+/// <summary>
+/// The approval workflow: staff submit, the Financial Director decides, staff issue.
+///
+/// Submitting, withdrawing and issuing are ordinary order work and sit behind
+/// <see cref="Roles.CanEditOrders"/>. Deciding sits behind <see cref="Roles.CanApprove"/>, which is
+/// a different and much smaller set - and the rule that the approver is not the submitter is
+/// enforced in <see cref="ApprovalRules"/> on top of that, because an administrator holds both.
+/// </summary>
+[Authorize(Roles = Roles.AnyRole)]
+public class ApprovalsController : Controller
+{
+    private readonly AppDbContext _db;
+    private readonly IPurchaseOrderApprovalService _approvals;
+    private readonly IApprovalNotifier _notifier;
+    private readonly UserManager<ApplicationUser> _users;
+
+    public ApprovalsController(AppDbContext db, IPurchaseOrderApprovalService approvals,
+                               IApprovalNotifier notifier, UserManager<ApplicationUser> users)
+    {
+        _db = db;
+        _approvals = approvals;
+        _notifier = notifier;
+        _users = users;
+    }
+
+    private Actor Me => new(_users.GetUserId(User), User.Identity?.Name);
+
+    /// <summary>
+    /// What is waiting on the Financial Director, oldest first - the queue is a to-do list, and the
+    /// thing that has been waiting longest is the thing holding someone up.
+    /// </summary>
+    [Authorize(Roles = Roles.CanApprove)]
+    public async Task<IActionResult> Queue(bool decided = false)
+    {
+        var q = _db.Approvals.AsNoTracking()
+            .Include(a => a.SupplierOrder).ThenInclude(o => o!.Supplier)
+            .Where(a => decided ? a.Status != ApprovalStatus.Pending : a.Status == ApprovalStatus.Pending);
+
+        var rows = await q
+            .OrderBy(a => decided ? DateTime.MaxValue : a.RequestedAt)
+            .ThenByDescending(a => a.DecidedAt)
+            .Take(200)
+            .Select(a => new ApprovalRowViewModel
+            {
+                Id = a.Id,
+                Kind = a.Kind,
+                Status = a.Status,
+                Reference = a.SupplierOrder!.PoNumber ?? "(not numbered)",
+                SupplierName = a.SupplierOrder!.Supplier!.Name,
+                AmountZar = a.AmountZarAtRequest,
+                RequestedAt = a.RequestedAt,
+                RequestedByName = a.RequestedByName,
+                DecidedAt = a.DecidedAt,
+                DecidedByName = a.DecidedByName,
+                OrderId = a.SupplierOrderId
+            })
+            .ToListAsync();
+
+        ViewBag.Decided = decided;
+        ViewBag.PendingCount = await _db.Approvals.CountAsync(a => a.Status == ApprovalStatus.Pending);
+
+        return View(rows);
+    }
+
+    [Authorize(Roles = Roles.CanApprove)]
+    public async Task<IActionResult> Review(int id)
+    {
+        var vm = await BuildReviewAsync(id);
+        return vm is null ? NotFound() : View(vm);
+    }
+
+    // --- Decisions ---------------------------------------------------------------------------
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanApprove)]
+    public async Task<IActionResult> Approve(int id, string? note, CancellationToken ct)
+    {
+        var result = await _approvals.ApproveAsync(id, Me, note, ct);
+        await NotifyDecisionAsync(id, result.Ok, ct);
+
+        TempData["Flash"] = result.Ok ? "Approved. The person who raised it has been told." : result.Message;
+        return result.Ok ? RedirectToAction(nameof(Queue)) : RedirectToAction(nameof(Review), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanApprove)]
+    public async Task<IActionResult> Reject(int id, string reason, CancellationToken ct)
+    {
+        var result = await _approvals.RejectAsync(id, Me, reason, ct);
+        await NotifyDecisionAsync(id, result.Ok, ct);
+
+        if (!result.Ok)
+        {
+            TempData["Flash"] = result.Message;
+            return RedirectToAction(nameof(Review), new { id });
+        }
+
+        TempData["Flash"] = "Rejected. The person who raised it has been told why.";
+        return RedirectToAction(nameof(Queue));
+    }
+
+    // --- Staff actions on an order -------------------------------------------------------------
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanEditOrders)]
+    public async Task<IActionResult> Submit(int orderId, string? note, CancellationToken ct)
+    {
+        var result = await _approvals.SubmitAsync(orderId, Me, note, ct);
+
+        if (!result.Ok)
+        {
+            TempData["Flash"] = result.Message;
+            return RedirectToAction("Details", "Orders", new { id = orderId });
+        }
+
+        var order = await LoadOrderAsync(orderId, ct);
+        var approval = order?.OpenApproval;
+
+        if (order is not null && approval is not null)
+        {
+            var link = Url.Action(nameof(Review), "Approvals", new { id = approval.Id }, Request.Scheme);
+            await _notifier.NotifyApproversAsync(approval, order, link, ct);
+            await _db.SaveChangesAsync(ct);
+
+            TempData["Flash"] = approval.NotificationSent
+                ? $"Sent for approval. {approval.NotifiedTo} has been emailed with the purchase order attached."
+                : approval.NotificationError ?? "Sent for approval, but the notification email did not go out.";
+        }
+
+        return RedirectToAction("Details", "Orders", new { id = orderId });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanEditOrders)]
+    public async Task<IActionResult> Withdraw(int orderId, CancellationToken ct)
+    {
+        var result = await _approvals.WithdrawAsync(orderId, Me, ct);
+        TempData["Flash"] = result.Ok ? "Withdrawn and returned to draft." : result.Message;
+        return RedirectToAction("Details", "Orders", new { id = orderId });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanEditOrders)]
+    public async Task<IActionResult> Issue(int orderId, CancellationToken ct)
+    {
+        var result = await _approvals.IssueAsync(orderId, Me, ct);
+        TempData["Flash"] = result.Ok ? "Purchase order issued." : result.Message;
+        return RedirectToAction("Details", "Orders", new { id = orderId });
+    }
+
+    // --- Helpers --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Emails the submitter once a decision is saved. Done here rather than inside the service so
+    /// the service stays free of URL generation, and so a mail failure cannot roll back a decision
+    /// that has already been recorded.
+    /// </summary>
+    private async Task NotifyDecisionAsync(int approvalId, bool decided, CancellationToken ct)
+    {
+        if (!decided) return;
+
+        var approval = await _db.Approvals.FirstOrDefaultAsync(a => a.Id == approvalId, ct);
+        if (approval?.SupplierOrderId is not int orderId) return;
+
+        var order = await LoadOrderAsync(orderId, ct);
+        if (order is null) return;
+
+        var link = Url.Action("Details", "Orders", new { id = orderId }, Request.Scheme);
+        await _notifier.NotifySubmitterAsync(approval, order, link, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private Task<SupplierOrder?> LoadOrderAsync(int orderId, CancellationToken ct) =>
+        _db.SupplierOrders
+           .Include(o => o.Supplier)
+           .Include(o => o.OrderProjects).ThenInclude(op => op.Project)
+           .Include(o => o.Approvals)
+           .AsSplitQuery()
+           .FirstOrDefaultAsync(o => o.Id == orderId, ct);
+
+    private async Task<ApprovalReviewViewModel?> BuildReviewAsync(int id)
+    {
+        var approval = await _db.Approvals.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        if (approval?.SupplierOrderId is not int orderId) return null;
+
+        var order = await _db.SupplierOrders.AsNoTracking()
+            .Include(o => o.Supplier)
+            .Include(o => o.OrderProjects).ThenInclude(op => op.Project)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+
+        if (order is null) return null;
+
+        // Checked here so the screen can explain why the buttons are absent, rather than offering
+        // them and refusing on submit. The POST re-checks regardless - this is presentation.
+        var canDecide = ApprovalRules.CanDecide(approval.Status, approval.RequestedById, _users.GetUserId(User));
+
+        return new ApprovalReviewViewModel
+        {
+            Approval = approval,
+            Order = order,
+            Projects = string.Join(", ", order.OrderProjects
+                .Select(op => op.Project?.Name).Where(n => !string.IsNullOrWhiteSpace(n))!),
+            CanDecide = canDecide.Ok,
+            WhyNot = canDecide.Message,
+            MinimumReasonLength = ApprovalRules.MinimumRejectionReasonLength
+        };
+    }
+}

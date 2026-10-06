@@ -8,6 +8,7 @@ using SoftCo.Services;
 using SoftCo.Services.Documents;
 using SoftCo.Services.Email;
 using SoftCo.Services.ExchangeRates;
+using SoftCo.Services.Approvals;
 using SoftCo.Services.Numbering;
 using SoftCo.Services.Pdf;
 
@@ -91,6 +92,10 @@ PdfSharp.Fonts.GlobalFontSettings.FontResolver = fontResolver;
 builder.Services.Configure<CompanyOptions>(builder.Configuration.GetSection(CompanyOptions.SectionName));
 builder.Services.AddSingleton<IPdfRenderer, MigraDocPdfRenderer>();
 builder.Services.AddScoped<IPurchaseOrderDocumentService, PurchaseOrderDocumentService>();
+
+// The approval workflow. The judgement lives in the pure ApprovalRules; these do the I/O.
+builder.Services.AddScoped<IPurchaseOrderApprovalService, PurchaseOrderApprovalService>();
+builder.Services.AddScoped<IApprovalNotifier, ApprovalNotifier>();
 
 // Email: in Development the composed message is written to App_Data/sent-email instead of being
 // sent, so the flow can be exercised end to end without credentials and without the risk of

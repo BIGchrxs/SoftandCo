@@ -1,0 +1,124 @@
+@model SoftCo.Models.SupplierOrder
+@using SoftCo.Models
+@{
+    var status = Model.PoApprovalStatus;
+    var open = Model.OpenApproval;
+    var decision = Model.LatestDecision;
+    var canEdit = User.CanEditOrders();
+
+    // The status drives the panel, so there is exactly one place that says what happens next and
+    // the screen can never offer an action the service would refuse.
+    var (headline, explain) = status switch
+    {
+        PoApprovalStatus.Draft =>
+            ("Not yet submitted",
+             "This order has not been put to the Financial Director. Nothing has been committed."),
+        PoApprovalStatus.PendingApproval =>
+            ("Awaiting approval",
+             $"Sent to the Financial Director{(open?.RequestedAt is DateTime t ? " on " + t.ToLocalTime().ToString("dd MMM yyyy HH:mm") : "")}. Nothing is committed until it is approved and issued."),
+        PoApprovalStatus.Approved =>
+            ("Approved, not yet issued",
+             "The Financial Director has approved this. Issue it to make it a purchase order Soft & Co stands behind."),
+        PoApprovalStatus.Issued =>
+            ("Issued",
+             "This purchase order has been issued. It is a commitment and its approval history is part of the record."),
+        PoApprovalStatus.Rejected =>
+            ("Rejected",
+             "The Financial Director sent this back. Make the changes asked for and submit it again."),
+        _ => (status.Label(), "")
+    };
+}
+
+<div class="sc-card @(status is PoApprovalStatus.PendingApproval or PoApprovalStatus.Rejected ? "sc-notice" : "")">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Purchase order approval</p>
+        <span class="sc-badge @(status == PoApprovalStatus.Issued ? "sc-badge-solid" : "")">@status.Label()</span>
+    </div>
+
+    <p class="sc-po-display" style="margin-bottom:.25rem">@headline</p>
+    <p class="sc-muted">@explain</p>
+
+    @if (status == PoApprovalStatus.Rejected && decision is not null && !string.IsNullOrWhiteSpace(decision.DecisionReason))
+    {
+        <p class="sc-label" style="margin-top:1rem">Reason</p>
+        <p class="sc-muted">@decision.DecisionReason <span class="sc-cell-sub">@decision.DecidedByName · @decision.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></p>
+    }
+
+    @if (status is PoApprovalStatus.Approved or PoApprovalStatus.Issued && decision is not null)
+    {
+        <p class="sc-muted">
+            Approved by @decision.DecidedByName on @decision.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+            at R @decision.AmountZarAtRequest.ToString("N2").
+        </p>
+    }
+
+    @if (open is not null && open.NotificationSent == false && !string.IsNullOrWhiteSpace(open.NotificationError))
+    {
+        @* A submission that saved but whose email failed must say so, or staff will wait on a
+           message that never left. Same discipline as a failed payment request. *@
+        <p class="sc-muted"><strong>Not notified:</strong> @open.NotificationError</p>
+    }
+
+    @if (canEdit)
+    {
+        <hr class="sc-rule" />
+        <div class="sc-row-actions">
+            @if (status is PoApprovalStatus.Draft or PoApprovalStatus.Rejected)
+            {
+                <form method="post" asp-controller="Approvals" asp-action="Submit" asp-route-orderId="@Model.Id">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="note" value="" />
+                    <button type="submit" class="btn btn-primary">Send for approval</button>
+                </form>
+            }
+            else if (status == PoApprovalStatus.PendingApproval)
+            {
+                <form method="post" asp-controller="Approvals" asp-action="Withdraw" asp-route-orderId="@Model.Id">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-secondary">Withdraw</button>
+                </form>
+            }
+            else if (status == PoApprovalStatus.Approved)
+            {
+                <form method="post" asp-controller="Approvals" asp-action="Issue" asp-route-orderId="@Model.Id">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-primary">Issue purchase order</button>
+                </form>
+            }
+        </div>
+    }
+
+    @if (Model.Approvals.Count > 0)
+    {
+        <hr class="sc-rule" />
+        <p class="sc-label">History</p>
+        <div class="sc-table-wrap">
+            <table class="sc-table">
+                <thead>
+                    <tr><th scope="col">Raised</th><th scope="col">By</th><th scope="col" class="sc-num">Value</th><th scope="col">Outcome</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var a in Model.Approvals.OrderByDescending(x => x.RequestedAt))
+                {
+                    <tr>
+                        <td class="sc-muted">@a.RequestedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                        <td>@a.RequestedByName</td>
+                        <td class="sc-num">@a.AmountZarAtRequest.ToString("N2")</td>
+                        <td>
+                            <span class="sc-badge">@a.Status.Label()</span>
+                            @if (a.DecidedAt is not null)
+                            {
+                                <span class="sc-cell-sub">@a.DecidedByName · @a.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy")</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(a.DecisionReason))
+                            {
+                                <span class="sc-cell-sub">@a.DecisionReason</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

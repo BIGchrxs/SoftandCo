@@ -1,4 +1,6 @@
 using System.Text;
+using SoftCo.Models;
+using SoftCo.Services.Approvals;
 using SoftCo.Services;
 using SoftCo.Services.Documents;
 
@@ -235,6 +237,98 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
 
     var empty = one with { Lines = [] };
     Check(empty.TotalForeign is null && empty.TotalZar == 0m, "An empty document totals to nothing, not a crash");
+}
+
+
+// --- Who may approve what ---------------------------------------------------------------
+{
+    // Submitting: the Financial Director is being asked to commit money to a supplier for a
+    // project. An order missing any of the three is not a decision anyone can make.
+    Check(ApprovalRules.CanSubmit(PoApprovalStatus.Draft, true, 1000m, true).Ok, "A complete draft can be submitted");
+    Check(ApprovalRules.CanSubmit(PoApprovalStatus.Rejected, true, 1000m, true).Ok, "A rejected order can be resubmitted");
+    Check(!ApprovalRules.CanSubmit(PoApprovalStatus.Draft, false, 1000m, true).Ok, "No supplier, no submission");
+    Check(!ApprovalRules.CanSubmit(PoApprovalStatus.Draft, true, 0m, true).Ok, "No value, no submission");
+    Check(!ApprovalRules.CanSubmit(PoApprovalStatus.Draft, true, -5m, true).Ok, "A negative value is not a value");
+    Check(!ApprovalRules.CanSubmit(PoApprovalStatus.Draft, true, 1000m, false).Ok, "No project, no submission");
+    Check(!ApprovalRules.CanSubmit(PoApprovalStatus.PendingApproval, true, 1000m, true).Ok, "Cannot submit twice");
+    Check(!ApprovalRules.CanSubmit(PoApprovalStatus.Issued, true, 1000m, true).Ok, "Cannot resubmit an issued order");
+
+    // The rule the whole phase exists for.
+    Check(ApprovalRules.CanDecide(ApprovalStatus.Pending, "user-a", "user-b").Ok, "Someone else may decide");
+    Check(!ApprovalRules.CanDecide(ApprovalStatus.Pending, "user-a", "user-a").Ok, "You cannot approve your own submission");
+    Check(!ApprovalRules.CanDecide(ApprovalStatus.Pending, "User-A", "user-a").Ok, "Self-approval check ignores case");
+    Check(!ApprovalRules.CanDecide(ApprovalStatus.Pending, "user-a", null).Ok, "An unattributable decision is refused");
+    Check(!ApprovalRules.CanDecide(ApprovalStatus.Approved, "user-a", "user-b").Ok, "Already decided, not decided again");
+    Check(!ApprovalRules.CanDecide(ApprovalStatus.Rejected, "user-a", "user-b").Ok, "A rejected request is closed");
+
+    // A rejection that says nothing sends work back to someone who has no idea what to change.
+    Check(ApprovalRules.CanReject(ApprovalStatus.Pending, "a", "b", "Price too high, renegotiate").Ok, "A real reason passes");
+    Check(!ApprovalRules.CanReject(ApprovalStatus.Pending, "a", "b", "no").Ok, "A one-word rejection is refused");
+    Check(!ApprovalRules.CanReject(ApprovalStatus.Pending, "a", "b", "          ").Ok, "Whitespace is not a reason");
+    Check(!ApprovalRules.CanReject(ApprovalStatus.Pending, "a", "b", null).Ok, "No reason at all is refused");
+    Check(!ApprovalRules.CanReject(ApprovalStatus.Pending, "a", "a", "Price too high, renegotiate").Ok,
+          "Self-rejection is refused even with a good reason");
+
+    Check(ApprovalRules.CanWithdraw(PoApprovalStatus.PendingApproval).Ok, "A waiting request can be withdrawn");
+    Check(!ApprovalRules.CanWithdraw(PoApprovalStatus.Approved).Ok, "Withdrawing cannot undo a decision already made");
+    Check(!ApprovalRules.CanWithdraw(PoApprovalStatus.Draft).Ok, "Nothing to withdraw from a draft");
+
+    Check(ApprovalRules.EditInvalidates(PoApprovalStatus.Approved), "Editing an approved order invalidates it");
+    Check(ApprovalRules.EditInvalidates(PoApprovalStatus.PendingApproval), "Editing a waiting order invalidates it");
+    // Issued invalidates too. Leaving it Issued after a material change would show Financial
+    // Director approval for an amount nobody approved.
+    Check(ApprovalRules.EditInvalidates(PoApprovalStatus.Issued), "Editing an issued order invalidates it as well");
+    Check(!ApprovalRules.EditInvalidates(PoApprovalStatus.Rejected), "A rejected order is already back with its submitter");
+    Check(!ApprovalRules.EditInvalidates(PoApprovalStatus.Draft), "A draft has nothing to lose");
+}
+
+// --- The fingerprint: an order edited after approval cannot be issued --------------------
+{
+    string Fp(int supplier = 1, string ccy = "CNY", decimal rate = 2.4815m,
+              decimal foreign = 128400m, decimal zar = 318622.26m, int[]? projects = null) =>
+        SubjectFingerprint.ForPurchaseOrder(supplier, ccy, rate, foreign, zar, projects ?? [3, 11]);
+
+    var original = Fp();
+
+    Check(original.Length == 64, "A fingerprint is a 64-character SHA-256 hex string");
+    Check(Fp() == original, "The same facts hash the same way twice");
+
+    // Project order and duplicates are not material; the set of projects is.
+    Check(Fp(projects: [11, 3]) == original, "Project order does not change the fingerprint");
+    Check(Fp(projects: [3, 11, 3]) == original, "A duplicated project does not change it either");
+    Check(Fp(projects: [3]) != original, "Removing a project does change it");
+
+    // Everything that changes what Soft & Co owes, or to whom.
+    Check(Fp(supplier: 2) != original, "A different supplier is a different commitment");
+    Check(Fp(ccy: "USD") != original, "A different currency is a different commitment");
+    Check(Fp(rate: 2.4816m) != original, "A changed exchange rate invalidates approval");
+    Check(Fp(foreign: 128401m) != original, "A changed foreign value invalidates approval");
+    Check(Fp(zar: 318622.27m) != original, "A single cent on the Rand value invalidates approval");
+
+    Check(Fp(ccy: "cny") == original, "Currency case is normalised, not treated as a change");
+
+    // Culture: a comma-decimal machine must not hash differently from a dot-decimal one, or every
+    // approval would invalidate itself the moment it was checked on another host.
+    Check(SubjectFingerprint.CanonicalForm(1, "CNY", 2.4815m, 128400m, 318622.26m, [3, 11])
+            .Contains("2.481500"),
+          "The canonical form is written with an invariant decimal point");
+
+    Check(SubjectFingerprint.Matches(original, Fp()), "A matching fingerprint is recognised");
+    Check(!SubjectFingerprint.Matches(original, Fp(zar: 1m)), "A mismatch is detected");
+
+    // An approval that cannot prove what it covered must not be treated as covering anything.
+    Check(!SubjectFingerprint.Matches(null, original), "A missing stored fingerprint never matches");
+    Check(!SubjectFingerprint.Matches("", original), "An empty stored fingerprint never matches");
+
+    // Issuing.
+    Check(ApprovalRules.CanIssue(PoApprovalStatus.Approved, original, original).Ok, "An unchanged approved order issues");
+    Check(!ApprovalRules.CanIssue(PoApprovalStatus.Approved, original, Fp(zar: 400000m)).Ok,
+          "An order edited after approval cannot be issued");
+    Check(!ApprovalRules.CanIssue(PoApprovalStatus.Draft, original, original).Ok, "A draft cannot be issued");
+    Check(!ApprovalRules.CanIssue(PoApprovalStatus.PendingApproval, original, original).Ok, "A waiting order cannot be issued");
+    Check(!ApprovalRules.CanIssue(PoApprovalStatus.Issued, original, original).Ok, "An issued order is not issued twice");
+    Check(!ApprovalRules.CanIssue(PoApprovalStatus.Approved, null, original).Ok,
+          "Approved with no recorded fingerprint cannot be issued");
 }
 
 Console.WriteLine($"All {passed} checks passed.");

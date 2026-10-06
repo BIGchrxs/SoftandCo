@@ -1,0 +1,114 @@
+@model SoftCo.ViewModels.ApprovalReviewViewModel
+@using SoftCo.Models
+@{
+    var a = Model.Approval;
+    var o = Model.Order;
+    ViewData["Title"] = $"Approve {o.PoNumber}";
+    var open = a.Status == ApprovalStatus.Pending;
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <div>
+            <p class="sc-label" style="margin-bottom:.25rem">@a.Kind.Label() · @a.Status.Label()</p>
+            <h2 style="margin:0">@o.PoNumber</h2>
+        </div>
+        <div class="sc-actions">
+            <a class="btn btn-secondary" asp-controller="PurchaseOrders" asp-action="Preview" asp-route-id="@o.Id">Open the purchase order</a>
+            <a class="btn btn-secondary" asp-controller="Orders" asp-action="Details" asp-route-id="@o.Id">Full order record</a>
+        </div>
+    </div>
+
+    <dl class="sc-dl">
+        <div><dt>Supplier</dt><dd>@o.Supplier?.Name</dd></div>
+        <div><dt>Product</dt><dd>@o.ProductDescription</dd></div>
+        <div><dt>Project(s)</dt><dd>@(Model.Projects is { Length: > 0 } p ? p : "—")</dd></div>
+        <div><dt>Currency</dt><dd>@o.CurrencyCode at @o.ExchangeRate.ToString("N6")</dd></div>
+        <div><dt>Invoice value</dt><dd>@o.InvoiceValueForeign.ToString("N2") @o.CurrencyCode</dd></div>
+        <div><dt>Cargo readiness</dt><dd>@(o.CargoReadinessDate?.ToString("dd MMM yyyy") ?? "—")</dd></div>
+        <div><dt>Raised by</dt><dd>@a.RequestedByName<span class="sc-cell-sub">@a.RequestedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></dd></div>
+    </dl>
+
+    @if (!string.IsNullOrWhiteSpace(a.RequestNote))
+    {
+        <hr class="sc-rule" />
+        <p class="sc-label">Note from @a.RequestedByName</p>
+        <p class="sc-muted">@a.RequestNote</p>
+    }
+
+    <hr class="sc-rule" />
+
+    @* The one number the decision is about. Stored on the approval, not read back off the order,
+       so it stays what was actually put in front of the approver. *@
+    <div class="sc-approve-amount">
+        <p class="sc-label">You are approving</p>
+        <p class="sc-approve-value">R @a.AmountZarAtRequest.ToString("N2")</p>
+        <p class="sc-muted">
+            Approving commits Soft &amp; Co to this amount with @o.Supplier?.Name.
+            If the order is changed afterwards it will have to be approved again before it can be issued.
+        </p>
+    </div>
+</div>
+
+@if (a.Status != ApprovalStatus.Pending)
+{
+    <div class="sc-card sc-notice">
+        <p class="sc-label">@a.Status.Label()</p>
+        <p class="sc-muted">
+            @a.DecidedByName on @a.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm").
+            @if (!string.IsNullOrWhiteSpace(a.DecisionReason))
+            {
+                <text> &mdash; @a.DecisionReason</text>
+            }
+        </p>
+    </div>
+}
+else if (!Model.CanDecide)
+{
+    @* Explains itself rather than showing buttons that would be refused. The POST checks again. *@
+    <div class="sc-card sc-notice">
+        <p class="sc-label">You cannot decide this one</p>
+        <p class="sc-muted">@Model.WhyNot</p>
+    </div>
+}
+else
+{
+    <div class="sc-card">
+        <p class="sc-label">Approve</p>
+        <form method="post" asp-action="Approve" asp-route-id="@a.Id">
+            @Html.AntiForgeryToken()
+            <div>
+                <label class="form-label" for="approveNote">Note (optional)</label>
+                <input class="form-control" id="approveNote" name="note" maxlength="1000" />
+            </div>
+            <div style="margin-top:.75rem">
+                <button type="submit" class="btn btn-primary">Approve R @a.AmountZarAtRequest.ToString("N2")</button>
+            </div>
+        </form>
+
+        <hr class="sc-rule" />
+
+        <p class="sc-label">Reject</p>
+        <form method="post" asp-action="Reject" asp-route-id="@a.Id">
+            @Html.AntiForgeryToken()
+            <div>
+                <label class="form-label" for="rejectReason">Why</label>
+                <textarea class="form-control" id="rejectReason" name="reason" rows="2"
+                          minlength="@Model.MinimumReasonLength" maxlength="1000" required></textarea>
+                <span class="sc-hint">
+                    Whoever raised this has to know what to change, so a reason is required.
+                </span>
+            </div>
+            <div style="margin-top:.75rem">
+                <button type="submit" class="btn btn-secondary">Reject</button>
+            </div>
+        </form>
+    </div>
+}
+
+@if (open && a.NotificationSent == false && !string.IsNullOrWhiteSpace(a.NotificationError))
+{
+    <p class="sc-data-note">Notification: @a.NotificationError</p>
+}

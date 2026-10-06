@@ -70,7 +70,9 @@ public sealed class PurchaseOrderDocumentService : IPurchaseOrderDocumentService
                                                             CancellationToken ct = default)
     {
         var rendered = await RenderAsync(orderId, ct);
-        if (rendered is not var (fileName, content)) return null;
+        if (rendered is null) return null;
+
+        var (fileName, content) = rendered.Value;
 
         // Regenerating replaces rather than accumulates. A purchase order is the current statement
         // of what is being committed to; a folder holding four of them, three stale, is how the

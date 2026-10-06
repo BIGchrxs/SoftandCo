@@ -1,0 +1,90 @@
+@model List<SoftCo.ViewModels.ApprovalRowViewModel>
+@using SoftCo.Models
+@{
+    ViewData["Title"] = "Approvals";
+    ViewData["Description"] = "What is waiting on a decision before money moves.";
+    var decided = ViewBag.Decided as bool? ?? false;
+    var pending = ViewBag.PendingCount as int? ?? 0;
+    var now = DateTime.UtcNow;
+    var oldest = Model.Count > 0 && !decided ? Model.Max(r => r.DaysWaiting(now)) : 0;
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi"><p class="sc-label">Awaiting decision</p><p class="sc-kpi-value">@pending.ToString("D2")</p><p class="sc-kpi-caption">Requests still open</p></div>
+    <div class="sc-kpi"><p class="sc-label">Value in the queue</p><p class="sc-kpi-value">@(decided ? "—" : Model.Sum(r => r.AmountZar).ToString("N2"))</p><p class="sc-kpi-caption">Rand awaiting approval</p></div>
+    <div class="sc-kpi"><p class="sc-label">Longest wait</p><p class="sc-kpi-value">@(decided ? "—" : oldest.ToString("D2"))</p><p class="sc-kpi-caption">Days the oldest has waited</p></div>
+</div>
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <div class="sc-filter-rows">
+            <div class="sc-tab-row">
+                <span class="sc-tab-label">Showing</span>
+                <div class="sc-tabs">
+                    <a class="@(!decided ? "active" : "")" asp-action="Queue">Awaiting decision</a>
+                    <a class="@(decided ? "active" : "")" asp-action="Queue" asp-route-decided="true">Decided</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Reference</th>
+                    <th scope="col">What</th>
+                    <th scope="col">Supplier</th>
+                    <th scope="col" class="sc-num">Value (ZAR)</th>
+                    <th scope="col">@(decided ? "Decided" : "Raised")</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in Model)
+            {
+                <tr>
+                    <td><a asp-action="Review" asp-route-id="@r.Id">@r.Reference</a></td>
+                    <td class="sc-muted">@r.Kind.Label()</td>
+                    <td>@r.SupplierName</td>
+                    <td class="sc-num">@r.AmountZar.ToString("N2")</td>
+                    @if (decided)
+                    {
+                        <td class="sc-muted">
+                            <span class="sc-badge">@r.Status.Label()</span>
+                            <span class="sc-cell-sub">@r.DecidedByName · @r.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy")</span>
+                        </td>
+                    }
+                    else
+                    {
+                        <td class="sc-muted">
+                            @r.RequestedAt.ToLocalTime().ToString("dd MMM yyyy")
+                            <span class="sc-cell-sub">
+                                @r.RequestedByName
+                                @{ var days = r.DaysWaiting(now); }
+                                @if (days >= 1) { <text>· waiting @days @(days == 1 ? "day" : "days")</text> }
+                            </span>
+                        </td>
+                    }
+                    <td>
+                        <div class="sc-row-actions">
+                            <a class="sc-row-link" asp-action="Review" asp-route-id="@r.Id">@(decided ? "View" : "Review")</a>
+                            @if (r.OrderId is int orderId)
+                            {
+                                <a class="sc-row-link" asp-controller="Orders" asp-action="Details" asp-route-id="@orderId">Order</a>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            @if (Model.Count == 0)
+            {
+                <tr><td colspan="6" class="sc-empty">@(decided ? "Nothing has been decided yet." : "Nothing is waiting. Everything raised has been dealt with.")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+<p class="sc-data-note">Approving commits Soft &amp; Co to the amount shown. A purchase order is not an instruction to the supplier until it has been approved and issued.</p>

@@ -23,6 +23,16 @@ public class SupplierOrder
     /// <summary>International (foreign currency, shipped) or Local (ZAR, no clearance).</summary>
     public OrderType OrderType { get; set; } = OrderType.International;
 
+    /// <summary>
+    /// How far this order has got towards being a commitment Soft &amp; Co has actually made.
+    ///
+    /// Separate from <see cref="PoNumber"/>, which is allocated the moment the order is saved: the
+    /// number is an internal reference from minute one, used by the grid and the search, while this
+    /// is what says whether the Financial Director has agreed to it. Draft is 0, so every order
+    /// that predates approvals starts there.
+    /// </summary>
+    public PoApprovalStatus PoApprovalStatus { get; set; } = PoApprovalStatus.Draft;
+
     public int SupplierId { get; set; }
     public Supplier? Supplier { get; set; }
 
@@ -82,6 +92,12 @@ public class SupplierOrder
     public ICollection<OrderDocument> Documents { get; set; } = new List<OrderDocument>();
     public ICollection<PaymentRequest> PaymentRequests { get; set; } = new List<PaymentRequest>();
 
+    /// <summary>
+    /// Every request for a decision this order has been through, including rejected and withdrawn
+    /// ones. Resubmitting adds a row; it never overwrites the previous attempt.
+    /// </summary>
+    public ICollection<Approval> Approvals { get; set; } = new List<Approval>();
+
     // --- Derived -----------------------------------------------------------------------------
 
     /// <summary>Total paid in the invoice currency. Requires Payments to be loaded.</summary>
@@ -107,6 +123,24 @@ public class SupplierOrder
     /// </summary>
     [NotMapped]
     public bool HasInvoice => Documents.Any(d => d.Kind == DocumentKind.Invoice);
+
+    /// <summary>
+    /// The request currently waiting on somebody, if there is one. Requires Approvals to be loaded.
+    /// </summary>
+    [NotMapped]
+    public Approval? OpenApproval =>
+        Approvals.Where(a => a.Status == ApprovalStatus.Pending)
+                 .OrderByDescending(a => a.RequestedAt)
+                 .FirstOrDefault();
+
+    /// <summary>
+    /// The decision this order's current state rests on. Requires Approvals to be loaded.
+    /// </summary>
+    [NotMapped]
+    public Approval? LatestDecision =>
+        Approvals.Where(a => a.DecidedAt != null)
+                 .OrderByDescending(a => a.DecidedAt)
+                 .FirstOrDefault();
 
     [NotMapped]
     public SettlementStatus SettlementStatus =>

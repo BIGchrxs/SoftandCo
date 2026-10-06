@@ -23,6 +23,12 @@ public static class RoleChecks
     /// <summary>May see money columns anywhere in the UI.</summary>
     public static bool CanSeeValues(this ClaimsPrincipal user) => HasAny(user, Roles.CanSeeValues);
 
+    /// <summary>May approve or reject what has been submitted.</summary>
+    public static bool CanApprove(this ClaimsPrincipal user) => HasAny(user, Roles.CanApprove);
+
+    /// <summary>May see margin and gross profit.</summary>
+    public static bool CanSeeMargin(this ClaimsPrincipal user) => HasAny(user, Roles.CanSeeMargin);
+
     /// <summary>
     /// Splits one of the comma-separated role lists the same way the authorization filter does, and
     /// returns true when the user holds any of them. Hiding a link is presentation, never access

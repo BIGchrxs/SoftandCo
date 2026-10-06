@@ -55,6 +55,17 @@ public class CreateUserViewModel
     [Display(Name = "Confirm temporary password")]
     [Compare(nameof(Password), ErrorMessage = "The two passwords do not match.")]
     public string ConfirmPassword { get; set; } = "";
+
+    /// <summary>
+    /// Staff for everyone doing the work; Financial Director for the person who approves it.
+    ///
+    /// Offered as a choice because the two are deliberately exclusive: an account that could both
+    /// raise and approve an order would make "the approver is not the submitter" unenforceable.
+    /// Validated against <see cref="SoftCo.Data.Roles.Assignable"/> in the controller, never
+    /// trusted as a role name straight off the form.
+    /// </summary>
+    [Required, Display(Name = "Access level")]
+    public string Role { get; set; } = SoftCo.Data.Roles.Staff;
 }
 
 public class ResetUserPasswordViewModel

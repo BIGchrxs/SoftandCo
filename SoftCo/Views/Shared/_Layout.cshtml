@@ -48,6 +48,12 @@
                     <li><a class="@Active("Orders", "Index", "Details", "Edit", "Create", "RecordPayment")" asp-controller="Orders" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">▤</span>Order tracker</a></li>
                     <li><a class="@Active("LocalOrders")" asp-controller="LocalOrders" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">◫</span>Local orders</a></li>
                     <li><a class="@Active("Orders", "Outstanding")" asp-controller="Orders" asp-action="Outstanding"><span class="sc-nav-icon" aria-hidden="true">◷</span>Outstanding</a></li>
+                    @* Only offered to people who can decide. The controller enforces it separately -
+                       hiding a link is presentation, not access control. *@
+                    @if (User.CanApprove())
+                    {
+                        <li><a class="@Active("Approvals")" asp-controller="Approvals" asp-action="Queue"><span class="sc-nav-icon" aria-hidden="true">✓</span>Approvals</a></li>
+                    }
                 </ul>
 
                 <ul class="sc-nav">

@@ -371,6 +371,18 @@ a:hover {
 }
 
 .sc-notice .sc-label { margin-bottom: 0.35rem; }
+
+/* The one figure an approval decision is about. Given room on purpose: the number is the whole
+   question, and it should be impossible to approve without having read it. */
+.sc-approve-amount { margin-top: 0.5rem; }
+
+.sc-approve-value {
+    font-family: var(--sc-font-num);
+    font-size: 2rem;
+    line-height: 1.1;
+    color: var(--sc-accent-strong);
+    margin: 0 0 0.5rem;
+}
 .sc-notice p:last-child { margin-bottom: 0; }
 
 .sc-card-head {

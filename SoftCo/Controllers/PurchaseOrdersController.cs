@@ -36,7 +36,13 @@ public class PurchaseOrdersController : Controller
     public async Task<IActionResult> Preview(int id, CancellationToken ct)
     {
         var rendered = await _documents.RenderAsync(id, ct);
-        if (rendered is not var (fileName, content)) return NotFound();
+
+        // An explicit null test. `is not var (fileName, content)` reads like a guard and is not one:
+        // a var pattern matches anything, null included, so that condition is always false and a
+        // missing order produced a NullReferenceException instead of a 404.
+        if (rendered is null) return NotFound();
+
+        var (fileName, content) = rendered.Value;
 
         Response.Headers["X-Content-Type-Options"] = "nosniff";
 

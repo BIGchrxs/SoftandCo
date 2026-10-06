@@ -59,6 +59,11 @@ public class UsersController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateUserViewModel vm)
     {
+        // An allow-list, never the posted string. Without this, editing the form to say "Admin"
+        // would be a working privilege escalation on the one screen that mints accounts.
+        if (!Roles.Assignable.Contains(vm.Role, StringComparer.Ordinal))
+            ModelState.AddModelError(nameof(vm.Role), "Choose an access level from the list.");
+
         if (!ModelState.IsValid) return View(vm);
 
         var email = vm.Email.Trim().ToLowerInvariant();
@@ -105,7 +110,7 @@ public class UsersController : Controller
         // without one is a half-made account. If this fails the user row is removed again rather
         // than left behind - every working controller now requires a role, but an account that can
         // sign in and reach nothing is still a support call nobody can explain.
-        var roleResult = await _users.AddToRoleAsync(user, Roles.Staff);
+        var roleResult = await _users.AddToRoleAsync(user, vm.Role);
 
         if (!roleResult.Succeeded)
         {
@@ -121,7 +126,7 @@ public class UsersController : Controller
         }
 
         _audit.Record(nameof(ApplicationUser), user.Id, "UserCreated",
-                      newValue: $"{email} ({Roles.Staff})");
+                      newValue: $"{email} ({vm.Role})");
         await _db.SaveChangesAsync();
 
         TempData["Flash"] = $"{email} can now sign in. They will be asked to set their own password.";
@@ -155,6 +160,61 @@ public class UsersController : Controller
         await _db.SaveChangesAsync();
 
         TempData["Flash"] = $"{user.Email} {(active ? "reactivated" : "deactivated")}.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Changes what an account may do. Replaces rather than adds: Staff and Financial Director are
+    /// exclusive on purpose, because an account holding both could approve its own submissions.
+    /// </summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetRole(string id, string role)
+    {
+        if (!Roles.Assignable.Contains(role, StringComparer.Ordinal))
+        {
+            TempData["Flash"] = "That is not an access level this screen can assign.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var user = await _users.FindByIdAsync(id);
+        if (user is null) return NotFound();
+
+        // An administrator changing their own role could remove the last account able to change it
+        // back, and the Users screen is the only way in.
+        if (user.Id == _users.GetUserId(User))
+        {
+            TempData["Flash"] = "You cannot change your own access level.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var current = await _users.GetRolesAsync(user);
+
+        if (current.Contains(Roles.Admin))
+        {
+            TempData["Flash"] = "Administrator accounts are not changed from this screen.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        if (current.Count > 0) await _users.RemoveFromRolesAsync(user, current);
+        var result = await _users.AddToRoleAsync(user, role);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result, user.Email, "UserRoleChangeFailed");
+            await _db.SaveChangesAsync();
+            TempData["Flash"] = "That access level could not be applied.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // The role lives in the sign-in cookie, so a change has to reach sessions already open or
+        // the user keeps the access they had until they next sign in.
+        await _users.UpdateSecurityStampAsync(user);
+
+        _audit.Record(nameof(ApplicationUser), user.Id, "UserRoleChanged",
+                      field: "Role", oldValue: string.Join(", ", current), newValue: role);
+        await _db.SaveChangesAsync();
+
+        TempData["Flash"] = $"{user.Email} is now {Roles.Label(role)}. They will need to sign in again.";
         return RedirectToAction(nameof(Index));
     }
 

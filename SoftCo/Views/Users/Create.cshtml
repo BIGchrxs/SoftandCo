@@ -28,6 +28,26 @@
 
         <hr class="sc-rule" />
 
+        <p class="sc-label">Access</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="Role"></label>
+                <select class="form-select" asp-for="Role">
+                    @foreach (var r in SoftCo.Data.Roles.Assignable)
+                    {
+                        <option value="@r" selected="@(Model.Role == r)">@SoftCo.Data.Roles.Label(r)</option>
+                    }
+                </select>
+                <span class="sc-hint">
+                    Staff do the day-to-day work and raise purchase orders. The Financial Director
+                    approves them &mdash; and only approves, so nobody can sign off their own work.
+                </span>
+                <span asp-validation-for="Role" class="sc-error"></span>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
         <p class="sc-label">First sign-in</p>
         <div class="sc-form-grid">
             <div>

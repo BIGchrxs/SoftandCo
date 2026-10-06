@@ -135,3 +135,49 @@ public enum SyncStatus
     Synced    = 2,
     Failed    = 3
 }
+
+/// <summary>
+/// Where a purchase order sits on its way to becoming a commitment.
+///
+/// Draft is 0 deliberately, so every order that already exists lands there without a data fix -
+/// the same ordering discipline <see cref="OrderType"/> and <see cref="SupplierOrigin"/> use.
+///
+/// This is not <see cref="FulfilmentStatus"/>. That answers "where are the goods?"; this answers
+/// "has anyone agreed to buy them?". An order can be Approved and still In Production, or Issued
+/// and Delivered, and the two never need to agree.
+/// </summary>
+public enum PoApprovalStatus
+{
+    Draft           = 0,
+    PendingApproval = 1,
+    Approved        = 2,
+    Issued          = 3,
+    Rejected        = 4
+}
+
+/// <summary>
+/// What is being approved. One approval table serves all three rather than three near-identical
+/// tables, so the Financial Director's queue is one query instead of a UNION and the rules about
+/// who may decide are written once.
+/// </summary>
+public enum ApprovalKind
+{
+    PurchaseOrder   = 0,
+    PaymentRelease  = 1,
+    CustomerInvoice = 2
+}
+
+/// <summary>
+/// The fate of one request for a decision.
+///
+/// Separate from <see cref="PoApprovalStatus"/>, which describes the order. An order carries one
+/// current status; it may have been through several approvals to get there, and every one of them
+/// is kept - a rejected request is evidence, not a draft to be overwritten.
+/// </summary>
+public enum ApprovalStatus
+{
+    Pending   = 0,
+    Approved  = 1,
+    Rejected  = 2,
+    Withdrawn = 3
+}
