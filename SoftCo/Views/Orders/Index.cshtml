@@ -29,7 +29,7 @@
 
 <div class="sc-section-heading">
     <div><h2>Supplier orders</h2><span class="sc-count">@Model.Rows.Count orders</span></div>
-    @if (User.IsInRole(SoftCo.Data.Roles.Admin) || User.IsInRole(SoftCo.Data.Roles.Procurement) || User.IsInRole(SoftCo.Data.Roles.Finance))
+    @if (User.CanEditOrders())
     {
         <a class="btn btn-primary" asp-action="Create"><span aria-hidden="true">＋</span> New order</a>
     }

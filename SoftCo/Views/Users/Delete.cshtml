@@ -1,0 +1,44 @@
+@model SoftCo.ViewModels.DeleteUserViewModel
+@{
+    ViewData["Title"] = "Delete account";
+}
+
+<div class="sc-card">
+    <p class="sc-label">Account</p>
+    <p class="sc-po-display">@Model.Email</p>
+    <p class="sc-muted">
+        @Model.DisplayName
+        @if (Model.Roles.Count > 0)
+        {
+            <span>&middot; @string.Join(", ", Model.Roles)</span>
+        }
+    </p>
+
+    <hr class="sc-rule" />
+
+    <p class="sc-label">What this does</p>
+    <ul class="sc-consequences">
+        <li>The account is removed. It cannot be undone, and the same person would have to be onboarded again from scratch.</li>
+        <li>They are signed out of any session they have open.</li>
+        <li>Orders, payments, documents and payment requests they created are <strong>not</strong> removed, and the audit trail keeps their email address against everything they did.</li>
+    </ul>
+
+    <p class="sc-muted">
+        If the point is to stop someone signing in &mdash; they have left, or you are not sure &mdash;
+        <a asp-action="Index">deactivate them instead</a>. That is reversible and keeps the account
+        intact.
+    </p>
+
+    <hr class="sc-rule" />
+
+    <form method="post" asp-action="Delete">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="UserId" />
+        <div asp-validation-summary="ModelOnly" class="sc-errors"></div>
+
+        <div class="sc-row-actions">
+            <button type="submit" class="btn btn-danger">Delete this account</button>
+            <a class="btn btn-secondary" asp-action="Index">Cancel</a>
+        </div>
+    </form>
+</div>

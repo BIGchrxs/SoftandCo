@@ -10,7 +10,7 @@ namespace SoftCo.Controllers;
 /// Manufacturers and freight/clearing agents share one register, separated by Type - the
 /// tracker's "Suppliers" and "Service Provider" sheets carry identical columns.
 /// </summary>
-[Authorize]
+[Authorize(Roles = Roles.AnyRole)]
 public class SuppliersController : Controller
 {
     private readonly AppDbContext _db;

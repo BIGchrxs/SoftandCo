@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SoftCo.Data;
+using SoftCo.Filters;
 using SoftCo.Models;
 using SoftCo.Services;
 using SoftCo.Services.Documents;
@@ -48,6 +49,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.User.RequireUniqueEmail = true;
 })
     .AddEntityFrameworkStores<AppDbContext>()
+    // Puts the must-change-password marker on the signed-in principal, so the filter below can
+    // check it without hitting the database on every request.
+    .AddClaimsPrincipalFactory<AppUserClaimsPrincipalFactory>()
     .AddDefaultTokenProviders();
 
 builder.Services.ConfigureApplicationCookie(options =>
@@ -100,7 +104,12 @@ builder.Services.AddSingleton(sp => new ExchangeRateService(
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ExchangeRateOptions>>(),
     sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ExchangeRateService>>()));
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    // Registered globally rather than per-controller: a controller added later would otherwise be
+    // reachable by someone still holding an administrator-set password.
+    options.Filters.Add<MustChangePasswordFilter>();
+});
 
 var app = builder.Build();
 

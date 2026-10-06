@@ -16,7 +16,7 @@ namespace SoftCo.Controllers;
 /// in both places. What differs is only what this controller writes and what its views show:
 /// currency is fixed at ZAR with a rate of 1, and there is no cargo-readiness date.
 /// </summary>
-[Authorize]
+[Authorize(Roles = Roles.AnyRole)]
 public class LocalOrdersController : Controller
 {
     private readonly AppDbContext _db;

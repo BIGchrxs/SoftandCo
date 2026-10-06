@@ -59,6 +59,23 @@ public static class EnumLabels
         _ => o.ToString()
     };
 
+    public static string Label(this VatTreatment t) => t switch
+    {
+        VatTreatment.Standard => "Standard rate",
+        VatTreatment.ZeroRated => "Zero-rated",
+        VatTreatment.Exempt => "Exempt",
+        _ => t.ToString()
+    };
+
+    public static string Label(this SyncStatus s) => s switch
+    {
+        SyncStatus.NotSynced => "Not synced",
+        SyncStatus.Pending => "Sync pending",
+        SyncStatus.Synced => "Synced",
+        SyncStatus.Failed => "Sync failed",
+        _ => s.ToString()
+    };
+
     public static string Label(this PaymentKind k) => k switch
     {
         PaymentKind.Deposit => "Deposit",

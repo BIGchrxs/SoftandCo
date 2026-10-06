@@ -1,0 +1,104 @@
+@model List<SoftCo.Models.Client>
+@using SoftCo.Models
+@using SoftCo.Data
+@{
+    ViewData["Title"] = "Clients";
+    ViewData["Description"] = "Who the work is for, and who gets invoiced.";
+    var counts = ViewBag.ProjectCounts as Dictionary<int, int> ?? new();
+    var unassigned = ViewBag.UnassignedProjects as int? ?? 0;
+    var active = ViewBag.Active as bool?;
+    var canEdit = User.CanEditOrders();
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi"><p class="sc-label">Clients</p><p class="sc-kpi-value">@Model.Count.ToString("D2")</p><p class="sc-kpi-caption">Clients in this view</p></div>
+    <div class="sc-kpi"><p class="sc-label">Active</p><p class="sc-kpi-value">@Model.Count(c => c.IsActive).ToString("D2")</p><p class="sc-kpi-caption">Currently taking work</p></div>
+    <div class="sc-kpi"><p class="sc-label">With projects</p><p class="sc-kpi-value">@Model.Count(c => counts.GetValueOrDefault(c.Id) > 0).ToString("D2")</p><p class="sc-kpi-caption">Clients with a linked project</p></div>
+    <div class="sc-kpi"><p class="sc-label">VAT registered</p><p class="sc-kpi-value">@Model.Count(c => !string.IsNullOrWhiteSpace(c.VatNumber)).ToString("D2")</p><p class="sc-kpi-caption">Clients with a VAT number on file</p></div>
+</div>
+
+@if (unassigned > 0)
+{
+    @* The projects that came across from the spreadsheet have no client, and were deliberately
+       not guessed at. This is the backlog, shown where the client they need gets created. *@
+    <div class="sc-card sc-notice">
+        <p class="sc-label">Unassigned projects</p>
+        <p class="sc-muted">
+            @unassigned @(unassigned == 1 ? "project has" : "projects have") no client yet. They were
+            carried over from the tracker, where one client could appear under several project names,
+            so they are assigned by hand rather than guessed at.
+            <a asp-controller="Projects" asp-action="Index">Review the project register</a>.
+        </p>
+    </div>
+}
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <div class="sc-filter-rows">
+            <div class="sc-tab-row">
+                <span class="sc-tab-label">Status</span>
+                <div class="sc-tabs">
+                    <a class="@(active == null ? "active" : "")" asp-action="Index">All</a>
+                    <a class="@(active == true ? "active" : "")" asp-action="Index" asp-route-active="true">Active</a>
+                    <a class="@(active == false ? "active" : "")" asp-action="Index" asp-route-active="false">Inactive</a>
+                </div>
+            </div>
+        </div>
+
+        @if (canEdit)
+        {
+            <a class="btn btn-primary" asp-action="Create">New client</a>
+        }
+    </div>
+
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Code</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Contact</th>
+                    <th scope="col">VAT number</th>
+                    <th scope="col">Country</th>
+                    <th scope="col" class="sc-num">Terms</th>
+                    <th scope="col" class="sc-num">Projects</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var c in Model)
+            {
+                <tr>
+                    <td>@c.Code</td>
+                    <td>
+                        @c.Name
+                        @if (!c.IsActive) { <span class="sc-badge">Inactive</span> }
+                        @if (c.DefaultVatTreatment != VatTreatment.Standard) { <span class="sc-badge">@c.DefaultVatTreatment.Label()</span> }
+                    </td>
+                    <td class="sc-muted">
+                        @if (!string.IsNullOrWhiteSpace(c.ContactEmail))
+                        { <a href="mailto:@c.ContactEmail">@(c.ContactName ?? c.ContactEmail)</a> }
+                        else
+                        { @(c.ContactName ?? "—") }
+                    </td>
+                    <td class="sc-num">@(c.VatNumber ?? "—")</td>
+                    <td class="sc-muted">@c.BillingCountry</td>
+                    <td class="sc-num">@c.DefaultPaymentTermsDays</td>
+                    <td class="sc-num">@(counts.TryGetValue(c.Id, out var n) ? n : 0)</td>
+                    <td>
+                        <div class="sc-row-actions">
+                            @if (canEdit)
+                            { <a class="sc-row-link" asp-action="Edit" asp-route-id="@c.Id" aria-label="Edit @c.Name">Edit</a> }
+                        </div>
+                    </td>
+                </tr>
+            }
+            @if (Model.Count == 0)
+            { <tr><td colspan="8" class="sc-empty">No clients in this view. Add a client to invoice against, or choose another status.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</div>
+<p class="sc-data-note">Payment terms are a default for new invoices. The due date stored on an invoice is what the client is held to.</p>

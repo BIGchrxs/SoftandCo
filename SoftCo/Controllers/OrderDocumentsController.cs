@@ -12,7 +12,7 @@ namespace SoftCo.Controllers;
 /// Serves order attachments. The files live under App_Data, outside wwwroot, so this action is
 /// the only route to them and every request passes through authentication first.
 /// </summary>
-[Authorize]
+[Authorize(Roles = Roles.AnyRole)]
 public class OrderDocumentsController : Controller
 {
     private readonly AppDbContext _db;

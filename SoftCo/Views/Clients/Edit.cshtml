@@ -1,0 +1,160 @@
+@model SoftCo.ViewModels.ClientEditViewModel
+@using SoftCo.Models
+@{
+    var isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "New client" : "Edit client";
+}
+
+<div class="sc-card">
+    <form method="post" asp-action="@(isNew ? "Create" : "Edit")">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="ModelOnly" class="sc-errors"></div>
+
+        <p class="sc-label">Identity</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="Code"></label>
+                <input class="form-control" asp-for="Code" placeholder="WILLIAMS" />
+                <span class="sc-hint">Short internal handle. Stored in capitals.</span>
+                <span asp-validation-for="Code" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="Name"></label>
+                <input class="form-control" asp-for="Name" placeholder="Williams" />
+                <span asp-validation-for="Name" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="LegalName"></label>
+                <input class="form-control" asp-for="LegalName" placeholder="Williams Property Holdings (Pty) Ltd" />
+                <span class="sc-hint">Only if it differs from the name above. This is what prints on a tax invoice.</span>
+                <span asp-validation-for="LegalName" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="RegistrationNumber"></label>
+                <input class="form-control" asp-for="RegistrationNumber" placeholder="2019/123456/07" />
+                <span asp-validation-for="RegistrationNumber" class="sc-error"></span>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <p class="sc-label">Contact</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="ContactName"></label>
+                <input class="form-control" asp-for="ContactName" />
+                <span asp-validation-for="ContactName" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="ContactEmail"></label>
+                <input class="form-control" asp-for="ContactEmail" type="email" />
+                <span asp-validation-for="ContactEmail" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="ContactPhone"></label>
+                <input class="form-control" asp-for="ContactPhone" />
+                <span asp-validation-for="ContactPhone" class="sc-error"></span>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <p class="sc-label">Billing address</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="BillingLine1"></label>
+                <input class="form-control" asp-for="BillingLine1" />
+                <span asp-validation-for="BillingLine1" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="BillingLine2"></label>
+                <input class="form-control" asp-for="BillingLine2" />
+                <span asp-validation-for="BillingLine2" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="BillingCity"></label>
+                <input class="form-control" asp-for="BillingCity" />
+                <span asp-validation-for="BillingCity" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="BillingProvince"></label>
+                <input class="form-control" asp-for="BillingProvince" />
+                <span asp-validation-for="BillingProvince" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="BillingPostalCode"></label>
+                <input class="form-control" asp-for="BillingPostalCode" />
+                <span asp-validation-for="BillingPostalCode" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="BillingCountry"></label>
+                <input class="form-control" asp-for="BillingCountry" />
+                <span class="sc-hint">Goods exported from South Africa are zero-rated, so the country decides the VAT default.</span>
+                <span asp-validation-for="BillingCountry" class="sc-error"></span>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <p class="sc-label">Invoicing defaults</p>
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="VatNumber"></label>
+                <input class="form-control" asp-for="VatNumber" placeholder="4123456789" inputmode="numeric" />
+                <span class="sc-hint">The client&#39;s own number, not Soft &amp; Co&#39;s. Leave blank if they are not VAT registered.</span>
+                <span asp-validation-for="VatNumber" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="DefaultPaymentTermsDays"></label>
+                <input class="form-control" asp-for="DefaultPaymentTermsDays" type="number" min="0" max="365" />
+                <span class="sc-hint">Pre-fills the due date on a new invoice. Changing it never moves a date already agreed.</span>
+                <span asp-validation-for="DefaultPaymentTermsDays" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="DefaultVatTreatment"></label>
+                <select class="form-select" asp-for="DefaultVatTreatment">
+                    @foreach (VatTreatment t in Enum.GetValues<VatTreatment>())
+                    {
+                        <option value="@t" selected="@(Model.DefaultVatTreatment == t)">@t.Label()</option>
+                    }
+                </select>
+                <span class="sc-hint">A default only. Treatment is set per line on each invoice.</span>
+                <span asp-validation-for="DefaultVatTreatment" class="sc-error"></span>
+            </div>
+        </div>
+
+        <hr class="sc-rule" />
+
+        <div>
+            <label class="form-label" asp-for="Notes"></label>
+            <textarea class="form-control" asp-for="Notes" rows="3"></textarea>
+            <span asp-validation-for="Notes" class="sc-error"></span>
+        </div>
+
+        <div style="margin-top:1rem">
+            <label class="sc-check"><input type="checkbox" asp-for="IsActive" /> <span>Active</span></label>
+            @if (!isNew && Model.ProjectCount > 0)
+            {
+                <span class="sc-hint">
+                    @Model.ProjectCount @(Model.ProjectCount == 1 ? "project is" : "projects are") linked to this
+                    client. Deactivating keeps all of it, and only stops the client being chosen for new work.
+                </span>
+            }
+        </div>
+
+        @if (!isNew)
+        {
+            <p class="sc-muted" style="margin-top:1rem">
+                Accounting system: <span class="sc-badge">@Model.SyncStatus.Label()</span>
+                <span class="sc-hint">Read-only. There is no accounting integration yet.</span>
+            </p>
+        }
+
+        <hr class="sc-rule" />
+        <button type="submit" class="btn btn-primary">@(isNew ? "Add client" : "Save changes")</button>
+        <a class="btn btn-secondary" asp-action="Index">Cancel</a>
+    </form>
+</div>
+
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

@@ -2,8 +2,8 @@
 @using SoftCo.Models
 @using SoftCo.Data
 @{
-    var canRequest = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Finance);
-    var canAddContact = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+    var canRequest = User.CanRecordPayments();
+    var canAddContact = User.CanEditOrders();
 }
 
 <div class="sc-card">

@@ -1,6 +1,6 @@
-@model SoftCo.Models.Project
+@model SoftCo.ViewModels.ProjectEditViewModel
 @{
-    var isNew = Model.Id == 0;
+    var isNew = Model.IsNew;
     ViewData["Title"] = isNew ? "New project" : "Edit project";
 }
 
@@ -12,14 +12,46 @@
 
         <div class="sc-form-grid">
             <div>
-                <label class="form-label" asp-for="Code">Code</label>
+                <label class="form-label" asp-for="Code"></label>
                 <input class="form-control" asp-for="Code" placeholder="FAIRMONT" />
+                <span class="sc-hint">Stored in capitals, matching the rest of the register.</span>
                 <span asp-validation-for="Code" class="sc-error"></span>
             </div>
             <div>
-                <label class="form-label" asp-for="Name">Name</label>
+                <label class="form-label" asp-for="Name"></label>
                 <input class="form-control" asp-for="Name" placeholder="Fairmont" />
                 <span asp-validation-for="Name" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="ClientId"></label>
+                <select class="form-select" asp-for="ClientId">
+                    <option value="">@(isNew ? "Choose a client…" : "No client")</option>
+                    @foreach (var c in Model.Clients)
+                    {
+                        <option value="@c.Id" selected="@(Model.ClientId == c.Id)">@c.Name (@c.Code)</option>
+                    }
+                </select>
+                @if (Model.Clients.Count == 0)
+                {
+                    <span class="sc-hint">
+                        No clients in the register yet.
+                        <a asp-controller="Clients" asp-action="Create">Add the client</a> first.
+                    </span>
+                }
+                else if (isNew)
+                {
+                    <span class="sc-hint">Who the work is for. Needed before the project can be invoiced.</span>
+                }
+                else if (Model.ClientId is null)
+                {
+                    @* Existing projects predate the client register, so this is an invitation rather
+                       than a requirement - the controller still saves without it. *@
+                    <span class="sc-hint">
+                        This project came across from the tracker without a client. Assigning one lets it be
+                        invoiced and counted towards gross profit.
+                    </span>
+                }
+                <span asp-validation-for="ClientId" class="sc-error"></span>
             </div>
         </div>
 

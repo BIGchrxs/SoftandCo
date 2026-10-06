@@ -5,5 +5,7 @@
          these units are deliberately free of EF and ASP.NET so they can be exercised on their own. -->
     <Compile Include="../../SoftCo/Services/PoNumberFormat.cs" Link="Services/PoNumberFormat.cs" />
     <Compile Include="../../SoftCo/Services/Documents/UploadValidator.cs" Link="Services/UploadValidator.cs" />
+    <Compile Include="../../SoftCo/Validation/SignInEmail.cs" Link="Validation/SignInEmail.cs" />
+    <Compile Include="../../SoftCo/Validation/VatNumber.cs" Link="Validation/VatNumber.cs" />
   </ItemGroup>
 </Project>

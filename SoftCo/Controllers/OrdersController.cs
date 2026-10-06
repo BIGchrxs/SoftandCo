@@ -15,7 +15,7 @@ namespace SoftCo.Controllers;
 /// The International Payment Tracker. This is the screen that replaces the spreadsheet:
 /// what was ordered from whom, for which projects, where it is, and what has been paid.
 /// </summary>
-[Authorize]
+[Authorize(Roles = Roles.AnyRole)]
 public class OrdersController : Controller
 {
     private readonly AppDbContext _db;
@@ -264,23 +264,11 @@ public class OrdersController : Controller
         return RedirectToAction(nameof(Details), new { id = order.Id });
     }
 
-    //delete is not implemented because the brief says "no deletion of orders".
-    //However, for dev testing i need a delete, ill implement it then delete the code after testing is done.
-
-    public async Task<IActionResult> Delete(int id)
-    {
-        var order = await _db.SupplierOrders
-            .Include(o => o.OrderProjects)
-            .Include(o => o.Payments)
-            .FirstOrDefaultAsync(o => o.Id == id);
-        if (order is null) return NotFound();
-        _db.OrderPayments.RemoveRange(order.Payments);
-        _db.OrderProjects.RemoveRange(order.OrderProjects);
-        _db.SupplierOrders.Remove(order);
-        await _db.SaveChangesAsync();
-        TempData["Flash"] = "Order deleted.";
-        return RedirectToAction(nameof(Index));
-    }
+    // The dev-only Delete action was removed. It was a GET with no antiforgery token and no role
+    // of its own, so it inherited the class-level AnyRole - which includes Viewer - meaning any
+    // signed-in user could destroy an order and its payment history by visiting a URL, and a
+    // link-prefetching browser could do it unprompted. The brief says orders are never deleted;
+    // cancelling an order (keeping it visible and auditable) is the supported path.
 
     
 

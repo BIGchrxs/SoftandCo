@@ -96,3 +96,35 @@ public enum SupplierOrigin
     International = 0,
     Local         = 1
 }
+
+/// <summary>
+/// How VAT applies to an amount. The rate itself is never read from this enum: it is stored on
+/// each invoice line, because South Africa moved from 14% to 15% in 2018 and a rate read at
+/// render time would silently re-price every historical invoice the next time it changed.
+///
+/// Zero-rated and exempt are not the same thing and must stay distinct. Exported goods are
+/// zero-rated - 0%, but still a taxable supply, and input VAT on them is still reclaimable -
+/// while exempt supplies sit outside the VAT system altogether. T.M Mauritius already makes this
+/// concrete: goods leaving South Africa are zero-rated while local delivery on the same job is
+/// standard-rated, so one invoice can legitimately carry both.
+/// </summary>
+public enum VatTreatment
+{
+    Standard  = 0,
+    ZeroRated = 1,
+    Exempt    = 2
+}
+
+/// <summary>
+/// Whether a record has been carried across to the external accounting system. Nothing writes
+/// anything but <see cref="NotSynced"/> yet - there is no Xero integration and none is planned in
+/// this work - but the column exists from the first migration so that adding one later does not
+/// mean backfilling every client, invoice and receipt.
+/// </summary>
+public enum SyncStatus
+{
+    NotSynced = 0,
+    Pending   = 1,
+    Synced    = 2,
+    Failed    = 3
+}

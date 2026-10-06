@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Payment contacts";
     var counts = ViewBag.RequestCounts as Dictionary<int, int> ?? new();
-    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+    var canEdit = User.CanEditOrders();
 }
 
 @await Html.PartialAsync("_Flash")
@@ -51,10 +51,12 @@
                             <td class="sc-muted">@(c.RoleNote ?? "—")</td>
                             <td class="sc-num">@(counts.TryGetValue(c.Id, out var n) ? n : 0)</td>
                             <td>
-                                @if (canEdit)
-                                {
-                                    <a class="sc-row-link" asp-action="Edit" asp-route-id="@c.Id">Edit</a>
-                                }
+                                <div class="sc-row-actions">
+                                    @if (canEdit)
+                                    {
+                                        <a class="sc-row-link" asp-action="Edit" asp-route-id="@c.Id">Edit</a>
+                                    }
+                                </div>
                             </td>
                         </tr>
                     }

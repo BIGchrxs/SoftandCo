@@ -8,6 +8,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public DbSet<Client> Clients => Set<Client>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<SupplierOrder> SupplierOrders => Set<SupplierOrder>();
@@ -32,10 +33,39 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(x => x.Type);
         });
 
+        // --- Client --------------------------------------------------------------------------
+        b.Entity<Client>(e =>
+        {
+            // One client entered twice under two spellings would split its invoices and quietly
+            // halve the revenue side of its margin, so both are unique. Code is normalised to
+            // capitals on save, so a plain index is enough for it.
+            e.HasIndex(x => x.Code).IsUnique();
+
+            // Name is NOT indexed here. A plain unique index is case-sensitive in PostgreSQL, so
+            // it would happily accept "Williams" alongside "williams" - precisely the duplicate it
+            // is meant to stop. The migration creates a unique index on lower("Name") instead,
+            // which the controller's case-insensitive pre-check then matches rather than merely
+            // approximates. Adding e.HasIndex(x => x.Name) back would create a second, weaker
+            // index beside it.
+
+            // The register lists active clients first and the "not synced" badge filters on this.
+            e.HasIndex(x => x.SyncStatus);
+        });
+
         // --- Project -------------------------------------------------------------------------
         b.Entity<Project>(e =>
         {
             e.HasIndex(x => x.Code).IsUnique();
+
+            e.HasOne(x => x.Client)
+             .WithMany(c => c.Projects)
+             .HasForeignKey(x => x.ClientId)
+             // Deleting a client must never take its project history with it, nor orphan the
+             // invoices hanging off those projects. Same reasoning as SupplierOrder -> Supplier.
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Drives the "unassigned" count on the projects register.
+            e.HasIndex(x => x.ClientId);
         });
 
         // --- SupplierOrder -------------------------------------------------------------------
@@ -57,6 +87,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
             // Both grids filter on this first, so it leads every query.
             e.HasIndex(x => x.OrderType);
+
+            // Optimistic concurrency via PostgreSQL's xmin system column. No column is added -
+            // xmin already exists on every row - so this costs nothing in schema terms. It matters
+            // because approvals are about to record "the FD approved THIS version of the order":
+            // two people editing the same order would otherwise last-write-win in silence.
+            e.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid")
+             .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
         });
 
         // --- OrderProject (join) -------------------------------------------------------------
@@ -122,6 +159,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
              .OnDelete(DeleteBehavior.Restrict);
 
             e.HasIndex(x => x.SentAt);
+
+            // Same reasoning as SupplierOrder: a payment request about to carry an approval state
+            // must not move underneath the person approving it.
+            e.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid")
+             .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
         });
 
         // --- AuditEvent ----------------------------------------------------------------------

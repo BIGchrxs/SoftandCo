@@ -361,6 +361,18 @@ a:hover {
 
 .sc-card + .sc-card { margin-top: 1.25rem; }
 
+/* A card that is telling you something rather than listing something: an unassigned-project
+   backlog now, an "awaiting approval" panel later. Reads as part of the page, not as an alarm -
+   a left rule in the accent colour instead of a coloured block. */
+.sc-notice {
+    border-left: 3px solid var(--sc-accent);
+    padding-top: 1.1rem;
+    padding-bottom: 1.1rem;
+}
+
+.sc-notice .sc-label { margin-bottom: 0.35rem; }
+.sc-notice p:last-child { margin-bottom: 0; }
+
 .sc-card-head {
     display: flex;
     align-items: baseline;
@@ -800,7 +812,23 @@ a:hover {
 
 /* --- Sidebar footer user ------------------------------------------------- */
 
-.sc-user { display: block; text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
+/* Now a link to the account page. Styled explicitly because the global link colour is meant
+   for the light content area and is close to unreadable against the dark sidebar. */
+.sc-user {
+    display: block;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.78rem;
+    color: var(--sc-sidebar-text);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.sc-user:hover,
+.sc-user:focus-visible {
+    color: var(--sc-white);
+    border-bottom-color: var(--sc-line-on-dark);
+}
 
 .sc-logout { margin-top: 0.4rem; }
 
@@ -909,7 +937,6 @@ a:hover {
 .sc-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7e50; }
 .sc-delivery-shipping .sc-status-dot, .sc-delivery-clearance .sc-status-dot { background: #637c8a; }
 .sc-delivery-delivered .sc-status-dot { background: #647a50; }
-.sc-row-link { font-size: .7rem; }
 .sc-payments-collapsed .sc-financial-column { display: none; }
 .sc-data-note { color: var(--sc-ink-soft); margin: 1rem 0; font-size: .73rem; }
 .sc-empty { padding: 3.5rem 1.5rem; text-align: center; }
@@ -978,20 +1005,44 @@ a:hover {
 }
 
 /* A button that has to sit inside a form but should read as a link. */
-.sc-inline-form { display: inline; }
+/* Row actions ------------------------------------------------------------
+   A table row's actions are a mix of links and buttons-in-forms. Left alone
+   they disagree on size, and the gaps between them come from whatever
+   whitespace happens to sit between the tags in the markup. This container
+   owns the spacing, and the rule below gives links and buttons the same
+   typography so "Reset password" and "Deactivate" read as one set of
+   controls rather than two. */
+.sc-row-actions {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+}
+
+.sc-inline-form { display: inline; margin: 0; }
+
+/* A button that has to live inside a form but should read as a link. Shares
+   every typographic property with .sc-row-link - change them together. */
+.sc-row-link,
+.sc-linkish {
+    font-family: var(--sc-font-sans);
+    font-size: 0.7rem;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    color: var(--sc-accent);
+    white-space: nowrap;
+}
 
 .sc-linkish {
     background: none;
     border: 0;
-    padding: 0;
-    color: var(--sc-accent);
-    font-family: var(--sc-font-sans);
-    font-size: 0.85rem;
-    cursor: pointer;
     border-bottom: 1px solid var(--sc-line-strong);
+    padding: 0;
+    cursor: pointer;
 }
 
-.sc-linkish:hover { color: var(--sc-accent-strong); }
+.sc-linkish:hover,
+.sc-row-link:hover { color: var(--sc-accent-strong); }
 
 /* --- Request payment ----------------------------------------------------- */
 
@@ -1091,4 +1142,34 @@ a:hover {
 .sc-origin-international {
     background-color: rgba(107, 70, 54, 0.08);
     border-color: var(--sc-accent);
+}
+
+/* A destructive action. Marked by a slightly heavier weight and an underline that is always
+   present, rather than by colour alone - the palette has no red in it, and colour on its own
+   is not something everyone can see. */
+.sc-danger {
+    font-weight: 600;
+    border-bottom: 1px solid currentColor;
+}
+
+.sc-consequences {
+    margin: 0 0 1rem;
+    padding-left: 1.1rem;
+    font-size: 0.88rem;
+}
+
+.sc-consequences li { margin-bottom: 0.4rem; }
+
+/* Bootstrap ships .btn-danger in its own red; the brand has no red, so this keeps the
+   destructive button inside the palette while still reading as the heavier of the two. */
+.btn-danger {
+    background-color: var(--sc-sidebar-head-bg);
+    border-color: var(--sc-sidebar-head-bg);
+    color: var(--sc-white);
+}
+
+.btn-danger:hover {
+    background-color: var(--sc-ink);
+    border-color: var(--sc-ink);
+    color: var(--sc-white);
 }

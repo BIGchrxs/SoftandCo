@@ -11,7 +11,7 @@ namespace SoftCo.Controllers;
 /// addresses out of free-text fields on individual orders, where a typo becomes a payment
 /// request that silently goes nowhere.
 /// </summary>
-[Authorize]
+[Authorize(Roles = Roles.AnyRole)]
 public class PaymentContactsController : Controller
 {
     private readonly AppDbContext _db;

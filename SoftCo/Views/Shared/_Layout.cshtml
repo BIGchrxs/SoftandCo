@@ -51,17 +51,29 @@
                 </ul>
 
                 <ul class="sc-nav">
+                    <li><a class="@Active("Clients")" asp-controller="Clients" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">◈</span>Clients</a></li>
                     <li><a class="@Active("Suppliers")" asp-controller="Suppliers" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">♧</span>Suppliers</a></li>
                     <li><a class="@Active("Projects")" asp-controller="Projects" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">▱</span>Projects</a></li>
                     <li><a class="@Active("PaymentContacts")" asp-controller="PaymentContacts" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">✉</span>Payment contacts</a></li>
                 </ul>
+
+                @* Administration is a separate group, and only administrators are offered it. The
+                   controller enforces this independently - hiding a link is presentation, not
+                   access control. *@
+                @if (User.IsInRole(Roles.Admin))
+                {
+                    <p class="sc-nav-label">Administration</p>
+                    <ul class="sc-nav">
+                        <li><a class="@Active("Users")" asp-controller="Users" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">◌</span>Users</a></li>
+                    </ul>
+                }
             </div>
 
             <div class="sc-sidebar-foot">
                 <p class="sc-sidebar-note">Considered in every detail.<span>Soft&amp;Co. operations</span></p>
                 @if (User.Identity?.IsAuthenticated == true)
                 {
-                    <span class="sc-user">@User.Identity.Name</span>
+                    <a class="sc-user" asp-controller="Account" asp-action="Profile">@User.Identity.Name</a>
                     <form method="post" asp-controller="Account" asp-action="Logout" class="sc-logout">
                         @Html.AntiForgeryToken()
                         <button type="submit">Sign out</button>

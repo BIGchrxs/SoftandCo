@@ -1,0 +1,92 @@
+@model SoftCo.ViewModels.ProfileViewModel
+@{
+    ViewData["Title"] = "Your account";
+    ViewData["Description"] = "Your details, your access and your password.";
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-card">
+    <p class="sc-label">Your details</p>
+
+    <form method="post" asp-action="Profile">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="ModelOnly" class="sc-errors"></div>
+
+        <div class="sc-form-grid">
+            <div>
+                <label class="form-label" asp-for="FirstName"></label>
+                <input class="form-control" asp-for="FirstName" autocomplete="given-name" />
+                <span asp-validation-for="FirstName" class="sc-error"></span>
+            </div>
+            <div>
+                <label class="form-label" asp-for="LastName"></label>
+                <input class="form-control" asp-for="LastName" autocomplete="family-name" />
+                <span asp-validation-for="LastName" class="sc-error"></span>
+            </div>
+        </div>
+
+        <p class="sc-hint" style="margin-top:.75rem">
+            This is the name shown beside anything you create or change.
+        </p>
+
+        <hr class="sc-rule" />
+
+        <button type="submit" class="btn btn-primary">Save details</button>
+    </form>
+</div>
+
+<div class="sc-card">
+    <p class="sc-label">Account</p>
+
+    <dl class="sc-dl">
+        <div>
+            <dt>Email</dt>
+            <dd>@Model.Email</dd>
+        </div>
+        <div>
+            <dt>Access</dt>
+            <dd>@(Model.Roles.Count == 0 ? "—" : string.Join(", ", Model.Roles))</dd>
+        </div>
+        <div>
+            <dt>Status</dt>
+            <dd>
+                @if (Model.IsActive)
+                {
+                    <span class="sc-badge sc-badge-solid">Active</span>
+                }
+                else
+                {
+                    <span class="sc-badge">Deactivated</span>
+                }
+            </dd>
+        </div>
+        <div>
+            <dt>Last sign-in</dt>
+            <dd>@(Model.LastLoginAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "This is your first")</dd>
+        </div>
+        <div>
+            <dt>Account opened</dt>
+            <dd>@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</dd>
+        </div>
+    </dl>
+
+    @* Email is the sign-in identity, and there is no address-verification step yet - letting
+       someone change it here would mean a typo locks them out of their own account with nobody
+       able to tell what it was changed to. Access is an administrator's decision by definition. *@
+    <p class="sc-hint" style="margin-top:1rem">
+        Your email address is also how you sign in, and your access level is set by an
+        administrator. Ask an administrator to change either.
+    </p>
+</div>
+
+<div class="sc-card">
+    <p class="sc-label">Password</p>
+    <p class="sc-muted">
+        Choose something you do not use anywhere else. Changing it signs out any other browser
+        still holding your old one.
+    </p>
+    <a class="btn btn-secondary" asp-action="ChangePassword">Change password</a>
+</div>
+
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

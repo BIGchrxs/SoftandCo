@@ -5,6 +5,8 @@
     ViewData["Description"] = "Keep every project's orders in view.";
     var exposure = ViewBag.Exposure as Dictionary<int, decimal> ?? new();
     var counts = ViewBag.Counts as Dictionary<int, int> ?? new();
+    var unassigned = Model.Count(p => p.ClientId == null);
+    var canEdit = User.CanEditOrders();
 }
 
 @await Html.PartialAsync("_Flash")
@@ -13,12 +15,33 @@
     <div class="sc-kpi"><p class="sc-label">Active projects</p><p class="sc-kpi-value">@Model.Count(p => p.IsActive).ToString("D2")</p><p class="sc-kpi-caption">Projects currently in the register</p></div>
     <div class="sc-kpi"><p class="sc-label">With orders</p><p class="sc-kpi-value">@Model.Count(p => counts.GetValueOrDefault(p.Id) > 0).ToString("D2")</p><p class="sc-kpi-caption">Projects with linked supplier orders</p></div>
     <div class="sc-kpi"><p class="sc-label">With outstanding balances</p><p class="sc-kpi-value">@Model.Count(p => exposure.GetValueOrDefault(p.Id) > 0).ToString("D2")</p><p class="sc-kpi-caption">Projects with a recorded balance due</p></div>
+    <div class="sc-kpi"><p class="sc-label">No client yet</p><p class="sc-kpi-value">@unassigned.ToString("D2")</p><p class="sc-kpi-caption">Projects still to be assigned</p></div>
 </div>
+
+@if (unassigned > 0)
+{
+    @* Deliberately not backfilled. The register came from a spreadsheet where one client appears
+       under several project names - three Ravellos, three Fairmonts - and two projects are internal
+       with no client at all. Guessing would have minted duplicate and fictional clients that look
+       exactly like real ones. So the backlog is shown instead of hidden. *@
+    <div class="sc-card sc-notice">
+        <p class="sc-label">Projects without a client</p>
+        <p class="sc-muted">
+            @unassigned @(unassigned == 1 ? "project needs" : "projects need") a client before they can be
+            invoiced or counted towards gross profit. They came across from the tracker, where one client
+            could appear under several project names, so they are assigned by hand rather than guessed at.
+            @if (canEdit)
+            {
+                <text>Open a project below to assign it, or <a asp-controller="Clients" asp-action="Create">add the client</a> first.</text>
+            }
+        </p>
+    </div>
+}
 
 <div class="sc-card">
     <div class="sc-card-head">
         <p class="sc-label" style="margin-bottom:0">@Model.Count projects</p>
-        @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance))
+        @if (canEdit)
         {
             <a class="btn btn-primary" asp-action="Create">New project</a>
         }
@@ -28,11 +51,12 @@
         <table class="sc-table">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th class="sc-num">Orders</th>
-                    <th class="sc-num">Outstanding (ZAR)</th>
-                    <th></th>
+                    <th scope="col">Code</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Client</th>
+                    <th scope="col" class="sc-num">Orders</th>
+                    <th scope="col" class="sc-num">Outstanding (ZAR)</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -41,16 +65,28 @@
                 <tr>
                     <td>@p.Code</td>
                     <td><a asp-controller="Orders" asp-action="Index" asp-route-ProjectId="@p.Id">@p.Name</a> @if (!p.IsActive) { <span class="sc-badge">Inactive</span> }</td>
+                    <td>
+                        @if (p.Client is null)
+                        {
+                            <span class="sc-badge">No client</span>
+                        }
+                        else
+                        {
+                            <a asp-controller="Clients" asp-action="Edit" asp-route-id="@p.Client.Id">@p.Client.Name</a>
+                        }
+                    </td>
                     <td class="sc-num">@(counts.TryGetValue(p.Id, out var c) ? c : 0)</td>
                     <td class="sc-num">@((exposure.TryGetValue(p.Id, out var e) ? e : 0m).ToString("N2"))</td>
                     <td>
-                        @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance))
-                        { <a asp-action="Edit" asp-route-id="@p.Id" aria-label="Edit @p.Name">Edit</a> }
+                        <div class="sc-row-actions">
+                            @if (canEdit)
+                            { <a class="sc-row-link" asp-action="Edit" asp-route-id="@p.Id" aria-label="Edit @p.Name">Edit</a> }
+                        </div>
                     </td>
                 </tr>
             }
             @if (Model.Count == 0)
-            { <tr><td colspan="5" class="sc-empty">No projects yet. Add a project to group its supplier orders.</td></tr> }
+            { <tr><td colspan="6" class="sc-empty">No projects yet. Add a project to group its supplier orders.</td></tr> }
             </tbody>
         </table>
     </div>

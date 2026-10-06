@@ -2,7 +2,7 @@
 @using SoftCo.Models
 @using SoftCo.Data
 @{
-    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+    var canEdit = User.CanEditOrders();
     var docs = Model.Documents.OrderByDescending(d => d.UploadedAt).ToList();
 }
 
@@ -45,13 +45,15 @@
                             <td class="sc-muted">@d.UploadedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")<span class="sc-cell-sub">@(d.UploadedById ?? "unknown")</span></td>
                             <td class="sc-num">@((d.SizeBytes / 1024m).ToString("N0")) KB</td>
                             <td>
-                                @if (canEdit)
-                                {
-                                    <form method="post" asp-controller="OrderDocuments" asp-action="Delete" asp-route-id="@d.Id" class="sc-inline-form">
-                                        @Html.AntiForgeryToken()
-                                        <button type="submit" class="sc-linkish">Remove</button>
-                                    </form>
-                                }
+                                <div class="sc-row-actions">
+                                    @if (canEdit)
+                                    {
+                                        <form method="post" asp-controller="OrderDocuments" asp-action="Delete" asp-route-id="@d.Id" class="sc-inline-form">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="sc-linkish">Remove</button>
+                                        </form>
+                                    }
+                                </div>
                             </td>
                         </tr>
                     }

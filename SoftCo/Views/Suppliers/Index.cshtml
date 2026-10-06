@@ -7,7 +7,7 @@
     var counts = ViewBag.OrderCounts as Dictionary<int, int> ?? new();
     var type = ViewBag.Type as SupplierType?;
     var origin = ViewBag.Origin as SupplierOrigin?;
-    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+    var canEdit = User.CanEditOrders();
 }
 
 @await Html.PartialAsync("_Flash")
@@ -73,8 +73,10 @@
                     <td>@s.DefaultCurrencyCode</td>
                     <td class="sc-num">@(counts.TryGetValue(s.Id, out var c) ? c : 0)</td>
                     <td>
-                        @if (canEdit)
-                        { <a asp-action="Edit" asp-route-id="@s.Id" aria-label="Edit @s.Name">Edit</a> }
+                        <div class="sc-row-actions">
+                            @if (canEdit)
+                            { <a class="sc-row-link" asp-action="Edit" asp-route-id="@s.Id" aria-label="Edit @s.Name">Edit</a> }
+                        </div>
                     </td>
                 </tr>
             }

@@ -54,9 +54,12 @@ fs.mkdirSync(output, { recursive: true });
     await page.locator('.sc-progress').waitFor();
     assert.match(await page.locator('[aria-current="step"]').innerText(), /Shipping/);
 
-    for (const route of ['/Orders/Outstanding', '/Suppliers', '/Projects']) {
+    // Counted per route rather than as one number for all of them. The flat `=== 3` here had
+    // already gone stale when Suppliers gained its origin tile, and silently so, because every
+    // register is listed on one line.
+    for (const [route, kpis] of [['/Orders/Outstanding', 3], ['/Suppliers', 4], ['/Projects', 4], ['/Clients', 4]]) {
       await visit(route);
-      assert.equal(await page.locator('.sc-kpi').count(), 3);
+      assert.equal(await page.locator('.sc-kpi').count(), kpis, `${route} KPI tiles`);
       await page.screenshot({ path: path.join(output, route.split('/').pop().toLowerCase() + '.png') });
     }
     await page.locator('.sc-table tbody a[href*="ProjectId"]').first().click();

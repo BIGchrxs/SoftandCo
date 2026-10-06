@@ -3,7 +3,7 @@
 @using SoftCo.Data
 @{
     ViewData["Title"] = "Local orders";
-    var canEdit = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance);
+    var canEdit = User.CanEditOrders();
 }
 
 @await Html.PartialAsync("_Flash")
@@ -138,11 +138,13 @@
                                 else { @await Html.PartialAsync("_SettlementBadge", r.Settlement) }
                             </td>
                             <td>
-                                <a class="sc-row-link" asp-controller="Orders" asp-action="Details" asp-route-id="@r.Id">View</a>
-                                @if (canEdit)
-                                {
-                                    <a class="sc-row-link" asp-action="Edit" asp-route-id="@r.Id">Edit</a>
-                                }
+                                <div class="sc-row-actions">
+                                    <a class="sc-row-link" asp-controller="Orders" asp-action="Details" asp-route-id="@r.Id">View</a>
+                                    @if (canEdit)
+                                    {
+                                        <a class="sc-row-link" asp-action="Edit" asp-route-id="@r.Id">Edit</a>
+                                    }
+                                </div>
                             </td>
                         </tr>
                     }

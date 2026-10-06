@@ -22,18 +22,17 @@
             <h2 style="margin:0">@Model.ProductDescription</h2>
         </div>
         <div class="sc-actions">
-            @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Finance))
+            @if (User.CanRecordPayments())
             {
                 <a class="btn btn-primary" asp-action="RecordPayment" asp-route-id="@Model.Id">Record payment</a>
             }
-            @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance))
+            @if (User.CanEditOrders())
             {
                 <a class="btn btn-secondary" asp-action="Edit" asp-route-id="@Model.Id">Edit</a>
             }
             <!--delete this delete action after testing, invoices cant be deleted-->
-            @if (User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Procurement) || User.IsInRole(Roles.Finance))
+            @if (User.CanEditOrders())
             {
-                <a class="btn btn-secondary" asp-action="Delete" asp-route-id="@Model.Id">Delete</a>
             }
         </div>
     </div>

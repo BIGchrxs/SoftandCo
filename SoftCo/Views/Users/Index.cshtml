@@ -1,0 +1,93 @@
+@model List<SoftCo.ViewModels.UserRowViewModel>
+@{
+    ViewData["Title"] = "Users";
+    ViewData["Description"] = "Who can sign in, and what they can reach.";
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi"><p class="sc-label">Accounts</p><p class="sc-kpi-value">@Model.Count.ToString("D2")</p><p class="sc-kpi-caption">Total accounts</p></div>
+    <div class="sc-kpi"><p class="sc-label">Active</p><p class="sc-kpi-value">@Model.Count(u => u.IsActive).ToString("D2")</p><p class="sc-kpi-caption">Able to sign in</p></div>
+    <div class="sc-kpi"><p class="sc-label">Pending first sign-in</p><p class="sc-kpi-value">@Model.Count(u => u.MustChangePassword).ToString("D2")</p><p class="sc-kpi-caption">Still on a temporary password</p></div>
+</div>
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Staff accounts</p>
+        <a class="btn btn-primary" asp-action="Create">Onboard a user</a>
+    </div>
+
+    <p class="sc-muted">
+        Everyone onboarded here gets the same standard access: orders, payments, documents and
+        payment requests. Administering users stays with administrators.
+    </p>
+
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Access</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Last sign-in</th>
+                    <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var u in Model)
+            {
+                <tr>
+                    <td>
+                        @u.DisplayName
+                        @if (u.IsSelf) { <span class="sc-badge">You</span> }
+                    </td>
+                    <td class="sc-muted">@u.Email</td>
+                    <td class="sc-muted">@(u.Roles.Count == 0 ? "—" : string.Join(", ", u.Roles))</td>
+                    <td>
+                        @if (!u.IsActive)
+                        {
+                            <span class="sc-badge">Deactivated</span>
+                        }
+                        else if (u.MustChangePassword)
+                        {
+                            <span class="sc-badge">Temporary password</span>
+                        }
+                        else
+                        {
+                            <span class="sc-badge sc-badge-solid">Active</span>
+                        }
+                    </td>
+                    <td class="sc-muted">@(u.LastLoginAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "Never")</td>
+                    <td>
+                        <div class="sc-row-actions">
+                            <a class="sc-row-link" asp-action="ResetPassword" asp-route-id="@u.Id">Reset password</a>
+
+                            @* An administrator must not be able to switch off the account they are
+                               using - the server refuses it too, this just avoids offering it. *@
+                            @if (!u.IsSelf)
+                            {
+                                <form method="post" asp-action="SetActive" class="sc-inline-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <input type="hidden" name="active" value="@((!u.IsActive).ToString().ToLowerInvariant())" />
+                                    <button type="submit" class="sc-linkish">@(u.IsActive ? "Deactivate" : "Reactivate")</button>
+                                </form>
+                            }
+                            @* A link to the confirmation page rather than a form that deletes on the
+                               first click. The previous form also posted "id" where the action binds
+                               "UserId", so it never reached the delete at all. *@
+                            @if (!u.IsSelf)
+                            {
+                                <a class="sc-row-link sc-danger" asp-action="Delete" asp-route-id="@u.Id">Delete</a>
+                            }
+
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
