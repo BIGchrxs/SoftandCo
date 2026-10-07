@@ -189,6 +189,11 @@ a:hover {
     color: var(--sc-sidebar-text);
     display: flex;
     flex-direction: column;
+    height: 100vh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    box-sizing: border-box;
+    scrollbar-width: none;
 }
 
 /* The header block, as on every numbered page of the deck - lifted off pure black
@@ -364,38 +369,40 @@ a:hover {
 /* A card that is telling you something rather than listing something: an unassigned-project
    backlog now, an "awaiting approval" panel later. Reads as part of the page, not as an alarm -
    a left rule in the accent colour instead of a coloured block. */
-.sc-notice {
-    border-left: 3px solid var(--sc-accent);
-    padding-top: 1.1rem;
-    padding-bottom: 1.1rem;
-}
+    .sc-card.sc-notice {
+        box-sizing: border-box;
+        border: 1px solid var(--sc-line);
+        border-left: 3px solid var(--sc-accent-strong);
+        border-radius: 12px;
+        border-left-width: 3px;
+        padding: 1.25rem 1.75rem;
+        background: #fffdf9;
+        line-height: 1.65;
+    }
 
-.sc-notice .sc-label { margin-bottom: 0.35rem; }
-
-/* The one figure an approval decision is about. Given room on purpose: the number is the whole
-   question, and it should be impossible to approve without having read it. */
-.sc-approve-amount { margin-top: 0.5rem; }
-
-.sc-approve-value {
-    font-family: var(--sc-font-num);
-    font-size: 2rem;
-    line-height: 1.1;
+.sc-notice .sc-label {
+    margin: 0 0 0.65rem;
     color: var(--sc-accent-strong);
-    margin: 0 0 0.5rem;
-}
-.sc-notice p:last-child { margin-bottom: 0; }
-
-.sc-card-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--sc-line);
+    font-weight: 600;
 }
 
-.sc-card-head > :last-child { margin-bottom: 0; }
+.sc-notice p {
+    margin: 0;
+}
+
+    .sc-notice p + p {
+        margin-top: 1rem;
+    }
+
+.sc-notice strong {
+    color: #392d23;
+    font-weight: 600;
+}
+
+.sc-notice a {
+    color: var(--sc-accent-strong);
+    text-underline-offset: 4px;
+}
 
 /* ============================================================================
    Controls

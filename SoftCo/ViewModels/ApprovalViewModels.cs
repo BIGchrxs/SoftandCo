@@ -27,6 +27,17 @@ public class ApprovalRowViewModel
     public string? DecidedByName { get; set; }
 
     /// <summary>
+    /// Where the invoice itself has got to, for invoice approvals.
+    ///
+    /// The approval and its subject are two different things, and after a decision they say
+    /// different things: an approval reads "Approved" the moment the Financial Director agrees, but
+    /// the invoice stays a draft until somebody issues it. Showing only the approval left people
+    /// looking at a row marked Approved whose reference still said "Draft invoice", with no
+    /// indication that an action was outstanding.
+    /// </summary>
+    public CustomerInvoiceStatus? InvoiceStatus { get; set; }
+
+    /// <summary>
     /// How long this has been waiting. Shown because the cost of this system is somebody's time,
     /// and a request sitting for a week is the failure it is meant to prevent.
     /// </summary>

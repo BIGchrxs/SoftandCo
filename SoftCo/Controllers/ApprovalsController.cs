@@ -46,14 +46,24 @@ public class ApprovalsController : Controller
     /// What is waiting on the Financial Director, oldest first - the queue is a to-do list, and the
     /// thing that has been waiting longest is the thing holding someone up.
     /// </summary>
+    /// <summary>
+    /// The Financial Director's queue, filtered to exactly one status.
+    ///
+    /// Previously this was a two-way split between "awaiting decision" and everything else, under
+    /// the heading "Decided" - which was read as "Declined" by the first person to use it, because
+    /// it was the only other tab and so looked like the pile things go to when they go wrong. A tab
+    /// per status means nobody has to interpret a label: approved things are under Approved.
+    /// </summary>
     [Authorize(Roles = Roles.CanApprove)]
-    public async Task<IActionResult> Queue(bool decided = false)
+    public async Task<IActionResult> Queue(ApprovalStatus status = ApprovalStatus.Pending)
     {
-        var q = _db.Approvals.AsNoTracking()
-            .Where(a => decided ? a.Status != ApprovalStatus.Pending : a.Status == ApprovalStatus.Pending);
+        var pendingView = status == ApprovalStatus.Pending;
+
+        var q = _db.Approvals.AsNoTracking().Where(a => a.Status == status);
 
         var rows = await q
-            .OrderBy(a => decided ? DateTime.MaxValue : a.RequestedAt)
+            // Waiting longest first while triaging; most recently decided first when looking back.
+            .OrderBy(a => pendingView ? a.RequestedAt : DateTime.MaxValue)
             .ThenByDescending(a => a.DecidedAt)
             .Take(200)
             .Select(a => new ApprovalRowViewModel
@@ -68,9 +78,10 @@ public class ApprovalsController : Controller
                     ? (a.SupplierOrder.PoNumber ?? "(not numbered)")
                     : a.PaymentRequest != null
                         ? (a.PaymentRequest.SupplierOrder!.PoNumber ?? "(not numbered)")
-                        // A draft invoice has no number until it is issued, which is the whole
-                        // point of the decision being asked for.
-                        : (a.CustomerInvoice!.InvoiceNumber ?? "Draft invoice"),
+                        // An invoice has no number until it is issued, which is the whole point of
+                        // the decision being asked for. Saying "not yet issued" rather than "draft"
+                        // keeps it from reading as a contradiction beside an Approved badge.
+                        : (a.CustomerInvoice!.InvoiceNumber ?? "Invoice - not yet issued"),
                 SupplierName = a.SupplierOrder != null
                     ? a.SupplierOrder.Supplier!.Name
                     : a.PaymentRequest != null
@@ -83,11 +94,12 @@ public class ApprovalsController : Controller
                 DecidedByName = a.DecidedByName,
                 OrderId = a.SupplierOrderId
                     ?? (a.PaymentRequest != null ? a.PaymentRequest.SupplierOrderId : (int?)null),
-                InvoiceId = a.CustomerInvoiceId
+                InvoiceId = a.CustomerInvoiceId,
+                InvoiceStatus = a.CustomerInvoice != null ? a.CustomerInvoice.Status : null
             })
             .ToListAsync();
 
-        ViewBag.Decided = decided;
+        ViewBag.Status = status;
         ViewBag.PendingCount = await _db.Approvals.CountAsync(a => a.Status == ApprovalStatus.Pending);
 
         return View(rows);

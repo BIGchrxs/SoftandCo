@@ -3,18 +3,33 @@
 @{
     ViewData["Title"] = "Approvals";
     ViewData["Description"] = "What is waiting on a decision before money moves.";
-    var decided = ViewBag.Decided as bool? ?? false;
+
+    var status = ViewBag.Status as ApprovalStatus? ?? ApprovalStatus.Pending;
+    var pendingView = status == ApprovalStatus.Pending;
     var pending = ViewBag.PendingCount as int? ?? 0;
     var now = DateTime.UtcNow;
-    var oldest = Model.Count > 0 && !decided ? Model.Max(r => r.DaysWaiting(now)) : 0;
+    var oldest = Model.Count > 0 && pendingView ? Model.Max(r => r.DaysWaiting(now)) : 0;
+
+    // One tab per status. The old two-way split put everything that was not waiting under a single
+    // heading called "Decided", which the first person to use it read as "Declined" - it was the
+    // only other tab, so it looked like the pile things go to when they go wrong.
+    var tabs = new (ApprovalStatus Status, string Label)[]
+    {
+        (ApprovalStatus.Pending,   "Awaiting decision"),
+        (ApprovalStatus.Approved,  "Approved"),
+        (ApprovalStatus.Rejected,  "Rejected"),
+        (ApprovalStatus.Withdrawn, "Withdrawn")
+    };
 }
 
 @await Html.PartialAsync("_Flash")
 
 <div class="sc-kpis">
     <div class="sc-kpi"><p class="sc-label">Awaiting decision</p><p class="sc-kpi-value">@pending.ToString("D2")</p><p class="sc-kpi-caption">Requests still open</p></div>
-    <div class="sc-kpi"><p class="sc-label">Value in the queue</p><p class="sc-kpi-value">@(decided ? "—" : Model.Sum(r => r.AmountZar).ToString("N2"))</p><p class="sc-kpi-caption">Rand awaiting approval</p></div>
-    <div class="sc-kpi"><p class="sc-label">Longest wait</p><p class="sc-kpi-value">@(decided ? "—" : oldest.ToString("D2"))</p><p class="sc-kpi-caption">Days the oldest has waited</p></div>
+    @* These two only mean anything about the open queue, so they say so rather than showing a
+       figure that silently changes meaning when you switch tab. *@
+    <div class="sc-kpi"><p class="sc-label">Value in the queue</p><p class="sc-kpi-value">@(pendingView ? Model.Sum(r => r.AmountZar).ToString("N2") : "—")</p><p class="sc-kpi-caption">Rand awaiting approval</p></div>
+    <div class="sc-kpi"><p class="sc-label">Longest wait</p><p class="sc-kpi-value">@(pendingView ? oldest.ToString("D2") : "—")</p><p class="sc-kpi-caption">Days the oldest has waited</p></div>
 </div>
 
 <div class="sc-card">
@@ -23,8 +38,11 @@
             <div class="sc-tab-row">
                 <span class="sc-tab-label">Showing</span>
                 <div class="sc-tabs">
-                    <a class="@(!decided ? "active" : "")" asp-action="Queue">Awaiting decision</a>
-                    <a class="@(decided ? "active" : "")" asp-action="Queue" asp-route-decided="true">Decided</a>
+                    @foreach (var tab in tabs)
+                    {
+                        <a class="@(status == tab.Status ? "active" : "")"
+                           asp-action="Queue" asp-route-status="@tab.Status">@tab.Label</a>
+                    }
                 </div>
             </div>
         </div>
@@ -38,7 +56,7 @@
                     <th scope="col">What</th>
                     <th scope="col">Supplier / client</th>
                     <th scope="col" class="sc-num">Value (ZAR)</th>
-                    <th scope="col">@(decided ? "Decided" : "Raised")</th>
+                    <th scope="col">@(pendingView ? "Raised" : "Decided")</th>
                     <th scope="col"><span class="visually-hidden">Actions</span></th>
                 </tr>
             </thead>
@@ -46,18 +64,22 @@
             @foreach (var r in Model)
             {
                 <tr>
-                    <td><a asp-action="Review" asp-route-id="@r.Id">@r.Reference</a></td>
+                    <td>
+                        <a asp-action="Review" asp-route-id="@r.Id">@r.Reference</a>
+
+                        @* An approval and its subject are different things, and after a decision
+                           they say different things: this request is Approved, but the invoice is
+                           still a draft until somebody issues it. Showing only the approval left a
+                           row marked Approved with nothing to say an action was outstanding. *@
+                        @if (r.InvoiceStatus is CustomerInvoiceStatus invoiceStatus && !pendingView)
+                        {
+                            <span class="sc-cell-sub">Invoice: @invoiceStatus.Label()</span>
+                        }
+                    </td>
                     <td class="sc-muted">@r.Kind.Label()</td>
                     <td>@r.SupplierName</td>
                     <td class="sc-num">@r.AmountZar.ToString("N2")</td>
-                    @if (decided)
-                    {
-                        <td class="sc-muted">
-                            <span class="sc-badge">@r.Status.Label()</span>
-                            <span class="sc-cell-sub">@r.DecidedByName · @r.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy")</span>
-                        </td>
-                    }
-                    else
+                    @if (pendingView)
                     {
                         <td class="sc-muted">
                             @r.RequestedAt.ToLocalTime().ToString("dd MMM yyyy")
@@ -68,9 +90,16 @@
                             </span>
                         </td>
                     }
+                    else
+                    {
+                        <td class="sc-muted">
+                            <span class="sc-badge">@r.Status.Label()</span>
+                            <span class="sc-cell-sub">@r.DecidedByName · @r.DecidedAt?.ToLocalTime().ToString("dd MMM yyyy")</span>
+                        </td>
+                    }
                     <td>
                         <div class="sc-row-actions">
-                            <a class="sc-row-link" asp-action="Review" asp-route-id="@r.Id">@(decided ? "View" : "Review")</a>
+                            <a class="sc-row-link" asp-action="Review" asp-route-id="@r.Id">@(pendingView ? "Review" : "View")</a>
                             @if (r.InvoiceId is int invoiceId)
                             {
                                 <a class="sc-row-link" asp-controller="CustomerInvoices" asp-action="Details" asp-route-id="@invoiceId">Invoice</a>
@@ -85,10 +114,42 @@
             }
             @if (Model.Count == 0)
             {
-                <tr><td colspan="6" class="sc-empty">@(decided ? "Nothing has been decided yet." : "Nothing is waiting. Everything raised has been dealt with.")</td></tr>
+                <tr>
+                    <td colspan="6" class="sc-empty">
+                        @switch (status)
+                        {
+                            case ApprovalStatus.Pending:
+                                <text>Nothing is waiting. Everything raised has been dealt with.</text>
+                                break;
+                            case ApprovalStatus.Approved:
+                                <text>Nothing has been approved yet.</text>
+                                break;
+                            case ApprovalStatus.Rejected:
+                                <text>Nothing has been rejected.</text>
+                                break;
+                            default:
+                                <text>Nothing has been withdrawn.</text>
+                                break;
+                        }
+                    </td>
+                </tr>
             }
             </tbody>
         </table>
     </div>
 </div>
-<p class="sc-data-note">Approving commits Soft &amp; Co to the amount shown. A purchase order is not an instruction to the supplier until it has been approved and issued.</p>
+
+@if (status == ApprovalStatus.Approved)
+{
+    @* Approval is permission, not completion. Said here because this tab is where somebody looks
+       to check that something went through, and the thing they are checking may still need doing. *@
+    <p class="sc-data-note">
+        Approved is not the same as done. A purchase order still has to be issued, a payment release
+        still has to be sent, and an invoice still has to be issued before it has a number. Open the
+        order or invoice to finish it.
+    </p>
+}
+else
+{
+    <p class="sc-data-note">Approving commits Soft &amp; Co to the amount shown. A purchase order is not an instruction to the supplier until it has been approved and issued.</p>
+}

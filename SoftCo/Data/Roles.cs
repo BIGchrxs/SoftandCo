@@ -80,11 +80,28 @@ public static class Roles
     public const string CanSeeValues = Admin + "," + Finance + "," + Procurement + "," + Staff
                                        + "," + FinancialDirector;
 
-    /// <summary>Roles permitted to record or amend payments.</summary>
-    public const string CanRecordPayments = Admin + "," + Finance + "," + Staff;
+    /// <summary>
+    /// Roles permitted to record or amend money: supplier payments, client receipts, and releasing
+    /// an approved payment request.
+    /// </summary>
+    public const string CanRecordPayments = Admin + "," + Finance + "," + Staff
+                                            + "," + FinancialDirector;
 
-    /// <summary>Roles permitted to create or edit orders, suppliers, projects and clients.</summary>
-    public const string CanEditOrders = Admin + "," + Procurement + "," + Finance + "," + Staff;
+    /// <summary>
+    /// Roles permitted to create or edit orders, suppliers, projects, clients and invoices.
+    ///
+    /// <para>The Financial Director is included. Together with <see cref="CanRecordPayments"/> this
+    /// gives them every financial ability in the system; the only thing they cannot do is administer
+    /// user accounts, which is <see cref="Admin"/> and is not a financial act.</para>
+    ///
+    /// <para>This does mean the Financial Director can now raise the things they also approve. The
+    /// control that stops that mattering is in <c>ApprovalRules.CanDecide</c>, which refuses to let
+    /// anyone approve their own submission, compared on the stored user id rather than a name. So an
+    /// approval still takes two people - but with only two accounts in the system, those two people
+    /// are the only two accounts, and whoever raises a thing must wait for the other to approve it.</para>
+    /// </summary>
+    public const string CanEditOrders = Admin + "," + Procurement + "," + Finance + "," + Staff
+                                        + "," + FinancialDirector;
 
     /// <summary>
     /// Roles permitted to approve or reject what has been submitted. Admin is included because
