@@ -487,4 +487,71 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
     Check(threw, "A negative VAT rate is refused rather than quietly applied");
 }
 
+
+// --- Receivables: what a client still owes ----------------------------------------------
+// Written before the implementation, like InvoiceMath. This decides whether an invoice reads as
+// paid, and whether staff are allowed to credit or receipt against it - the two ways money can be
+// made to disappear from a ledger.
+{
+    // Credits reduce what is owed before receipts do: a credit note cancels part of the charge,
+    // it is not a payment.
+    Check(ReceivableMath.AmountDue(1150.00m, 0m) == 1150.00m, "No credits means the full invoice is due");
+    Check(ReceivableMath.AmountDue(1150.00m, 150.00m) == 1000.00m, "A credit reduces what is due");
+    Check(ReceivableMath.AmountDue(1150.00m, 1150.00m) == 0m, "A full credit leaves nothing due");
+
+    Check(ReceivableMath.Outstanding(1150.00m, 0m, 0m) == 1150.00m, "Nothing received, all outstanding");
+    Check(ReceivableMath.Outstanding(1150.00m, 0m, 500.00m) == 650.00m, "A part payment reduces the balance");
+    Check(ReceivableMath.Outstanding(1150.00m, 150.00m, 1000.00m) == 0m, "Credit plus payment can settle it exactly");
+
+    // Overpayment shows as negative rather than clamping to zero. A client who has paid too much is
+    // owed money, and hiding that behind a zero is how it never gets refunded.
+    Check(ReceivableMath.Outstanding(1000.00m, 0m, 1200.00m) == -200.00m, "Overpayment shows as negative");
+
+    // Status is derived, never typed in - the same discipline SettlementStatus applies to supplier
+    // orders, and for the same reason: a status somebody maintains by hand drifts.
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.Issued, 1000m, 0m, 0m) == CustomerInvoiceStatus.Issued,
+          "Nothing received stays Issued");
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.Issued, 1000m, 0m, 400m) == CustomerInvoiceStatus.PartPaid,
+          "A part payment is PartPaid");
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.Issued, 1000m, 0m, 1000m) == CustomerInvoiceStatus.Paid,
+          "Paid in full is Paid");
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.PartPaid, 1000m, 0m, 1200m) == CustomerInvoiceStatus.Paid,
+          "Overpayment still reads as Paid, not back to PartPaid");
+
+    // Fully credited with nothing received is settled, not perpetually outstanding. Otherwise a
+    // cancelled invoice sits on the receivables list forever.
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.Issued, 1000m, 1000m, 0m) == CustomerInvoiceStatus.Paid,
+          "A fully credited invoice is settled, not outstanding");
+
+    // A draft or cancelled invoice is not a receivable at all and must not be reclassified by this.
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.Draft, 1000m, 0m, 0m) == CustomerInvoiceStatus.Draft,
+          "A draft is left alone");
+    Check(ReceivableMath.StatusFor(CustomerInvoiceStatus.Cancelled, 1000m, 0m, 500m) == CustomerInvoiceStatus.Cancelled,
+          "A cancelled invoice is left alone");
+
+    // Receipts.
+    Check(ReceivableMath.CanRecordReceipt(500m, 1000m).Ok, "A receipt within the balance is allowed");
+    Check(ReceivableMath.CanRecordReceipt(1000m, 1000m).Ok, "Settling exactly is allowed");
+    Check(!ReceivableMath.CanRecordReceipt(0m, 1000m).Ok, "A zero receipt is not a payment");
+    Check(!ReceivableMath.CanRecordReceipt(-50m, 1000m).Ok, "A negative receipt is a credit note, not a payment");
+    Check(!ReceivableMath.CanRecordReceipt(100m, 0m).Ok, "Nothing outstanding, nothing to receipt");
+
+    // Deliberately allowed: clients do overpay, and refusing to record it means the books do not
+    // match the bank. It is flagged on screen rather than refused.
+    Check(ReceivableMath.CanRecordReceipt(1200m, 1000m).Ok, "An overpayment can still be recorded");
+
+    // Credit notes. The cap is the whole point: crediting more than was ever charged would
+    // manufacture a refund out of nothing.
+    Check(ReceivableMath.CanCredit(500m, 1000m, 0m).Ok, "A partial credit is allowed");
+    Check(ReceivableMath.CanCredit(1000m, 1000m, 0m).Ok, "Crediting the whole invoice is allowed");
+    Check(ReceivableMath.CanCredit(400m, 1000m, 600m).Ok, "Credits can be issued up to the total, cumulatively");
+    Check(!ReceivableMath.CanCredit(401m, 1000m, 600m).Ok, "One cent past the total is refused");
+    Check(!ReceivableMath.CanCredit(1000m, 1000m, 1000m).Ok, "A fully credited invoice cannot be credited again");
+    Check(!ReceivableMath.CanCredit(0m, 1000m, 0m).Ok, "A zero credit note is not a correction");
+    Check(!ReceivableMath.CanCredit(-100m, 1000m, 0m).Ok, "A negative credit note is an invoice, not a credit");
+
+    Check(ReceivableMath.CreditHeadroom(1000m, 250m) == 750m, "Headroom is what is left to credit");
+    Check(ReceivableMath.CreditHeadroom(1000m, 1000m) == 0m, "No headroom on a fully credited invoice");
+}
+
 Console.WriteLine($"All {passed} checks passed.");

@@ -25,19 +25,21 @@ public class CustomerInvoicesController : Controller
     private readonly AppDbContext _db;
     private readonly ICustomerInvoiceService _invoices;
     private readonly ICustomerInvoiceDocumentService _documents;
+    private readonly IReceivableService _receivables;
     private readonly IApprovalNotifier _notifier;
     private readonly IAuditService _audit;
     private readonly UserManager<ApplicationUser> _users;
     private readonly TimeProvider _clock;
 
     public CustomerInvoicesController(AppDbContext db, ICustomerInvoiceService invoices,
-                                      ICustomerInvoiceDocumentService documents, IApprovalNotifier notifier,
-                                      IAuditService audit, UserManager<ApplicationUser> users,
-                                      TimeProvider clock)
+                                      ICustomerInvoiceDocumentService documents, IReceivableService receivables,
+                                      IApprovalNotifier notifier, IAuditService audit,
+                                      UserManager<ApplicationUser> users, TimeProvider clock)
     {
         _db = db;
         _invoices = invoices;
         _documents = documents;
+        _receivables = receivables;
         _notifier = notifier;
         _audit = audit;
         _users = users;
@@ -102,6 +104,8 @@ public class CustomerInvoicesController : Controller
             .Include(i => i.Project)
             .Include(i => i.Lines)
             .Include(i => i.Approvals)
+            .Include(i => i.Receipts)
+            .Include(i => i.CreditNotes)
             .AsSplitQuery()
             .FirstOrDefaultAsync(i => i.Id == id);
 
@@ -295,6 +299,106 @@ public class CustomerInvoicesController : Controller
         var (fileName, content) = rendered.Value;
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(content, "application/pdf", fileName);
+    }
+
+
+    // --- Receipts and credit notes ---------------------------------------------------------
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanRecordPayments)]
+    public async Task<IActionResult> RecordReceipt(int id, decimal amountZar, DateOnly receivedDate,
+                                                   ReceiptMethod method, string? reference, string? notes,
+                                                   CancellationToken ct)
+    {
+        var result = await _receivables.RecordReceiptAsync(id, amountZar, receivedDate, method,
+                                                           reference, notes, Me, ct);
+
+        TempData["Flash"] = result.Ok ? $"Receipt of R {amountZar:N2} recorded." : result.Message;
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanRecordPayments)]
+    public async Task<IActionResult> RemoveReceipt(int id, int receiptId, CancellationToken ct)
+    {
+        var result = await _receivables.RemoveReceiptAsync(receiptId, Me, ct);
+        TempData["Flash"] = result.Ok ? "Receipt removed. The amount is kept in the audit trail." : result.Message;
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    /// <summary>
+    /// Raises a credit note against an issued invoice. This is the only way to correct one: an
+    /// issued invoice is a tax document, and the VAT Act requires a credit note to reverse it.
+    /// </summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    [Authorize(Roles = Roles.CanEditOrders)]
+    public async Task<IActionResult> CreditNote(int id, string reason, string description,
+                                                decimal amount, VatTreatment vatTreatment,
+                                                CancellationToken ct)
+    {
+        var lines = new List<InvoiceLineInput>
+        {
+            new(string.IsNullOrWhiteSpace(description) ? "Credit" : description, 1m, amount, vatTreatment)
+        };
+
+        var (result, note) = await _receivables.DraftCreditNoteAsync(id, reason, lines, false, Me, ct);
+
+        if (!result.Ok || note is null)
+        {
+            TempData["Flash"] = result.Message;
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        // Drafted and issued in one action. A separate draft step would be a screen staff pass
+        // through without reading; the cap is enforced at both points regardless.
+        var issued = await _receivables.IssueCreditNoteAsync(note.Id, Me, ct);
+
+        TempData["Flash"] = issued.Ok
+            ? $"Credit note issued for R {note.GrandTotal:N2}."
+            : issued.Message;
+
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    /// <summary>
+    /// What clients owe, oldest first. Mirrors the supplier-side Outstanding page: the same question
+    /// asked in the other direction.
+    /// </summary>
+    [Authorize(Roles = Roles.CanSeeValues)]
+    public async Task<IActionResult> Receivables(CancellationToken ct)
+    {
+        var invoices = await _db.CustomerInvoices.AsNoTracking()
+            .Include(i => i.Client)
+            .Include(i => i.Project)
+            .Include(i => i.Receipts)
+            .Include(i => i.CreditNotes)
+            .AsSplitQuery()
+            .Where(i => i.Status == CustomerInvoiceStatus.Issued
+                     || i.Status == CustomerInvoiceStatus.PartPaid)
+            .ToListAsync(ct);
+
+        // Ordered in memory because the balance depends on receipts and credits, which cannot be
+        // summed in the same query without loading them anyway.
+        var rows = invoices
+            .Select(i => new ReceivableRowViewModel
+            {
+                Id = i.Id,
+                InvoiceNumber = i.InvoiceNumber ?? "(not numbered)",
+                ClientName = i.Client?.Name ?? "",
+                ProjectName = i.Project?.Name,
+                IssueDate = i.IssueDate,
+                DueDate = i.DueDate,
+                GrandTotal = i.GrandTotal,
+                CreditedTotal = i.CreditedTotal,
+                ReceivedTotal = i.ReceivedTotal,
+                OutstandingZar = i.OutstandingZar
+            })
+            .Where(r => r.OutstandingZar != 0m)
+            .OrderBy(r => r.DueDate ?? DateOnly.MaxValue)
+            .ThenBy(r => r.InvoiceNumber)
+            .ToList();
+
+        return View(new ReceivablesViewModel { Rows = rows, Today = Today });
     }
 
     // --- Helpers -------------------------------------------------------------------------------

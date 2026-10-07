@@ -1,0 +1,83 @@
+@model SoftCo.ViewModels.ReceivablesViewModel
+@{
+    ViewData["Title"] = "Receivables";
+    ViewData["Description"] = "What clients owe, and how long they have owed it.";
+    var today = Model.Today;
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi">
+        <p class="sc-label">Owed by clients</p>
+        <p class="sc-kpi-value">R @Model.TotalOutstanding.ToString("N2")</p>
+        <p class="sc-kpi-caption">Issued invoices, less credits and receipts</p>
+    </div>
+    <div class="sc-kpi">
+        <p class="sc-label">Unsettled invoices</p>
+        <p class="sc-kpi-value">@Model.Rows.Count.ToString("D2")</p>
+        <p class="sc-kpi-caption">Still carrying a balance</p>
+    </div>
+    <div class="sc-kpi">
+        <p class="sc-label">Overdue</p>
+        <p class="sc-kpi-value">@Model.OverdueCount.ToString("D2")</p>
+        <p class="sc-kpi-caption">Past their due date</p>
+    </div>
+    <div class="sc-kpi">
+        <p class="sc-label">Overdue value</p>
+        <p class="sc-kpi-value">@Model.TotalOverdue.ToString("N2")</p>
+        <p class="sc-kpi-caption">Rand past due</p>
+    </div>
+</div>
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Collection worklist</p>
+        <a class="btn btn-secondary" asp-action="Index">All invoices</a>
+    </div>
+
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Invoice</th>
+                    <th scope="col">Client</th>
+                    <th scope="col">Due</th>
+                    <th scope="col" class="sc-num">Invoiced</th>
+                    <th scope="col" class="sc-num">Credited</th>
+                    <th scope="col" class="sc-num">Received</th>
+                    <th scope="col" class="sc-num">Outstanding</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in Model.Rows)
+            {
+                var days = r.DaysPastDue(today);
+                <tr>
+                    <td>
+                        <a asp-action="Details" asp-route-id="@r.Id">@r.InvoiceNumber</a>
+                        @if (r.ProjectName is { Length: > 0 }) { <span class="sc-cell-sub">@r.ProjectName</span> }
+                    </td>
+                    <td>@r.ClientName</td>
+                    <td class="sc-muted">
+                        @(r.DueDate?.ToString("dd MMM yyyy") ?? "—")
+                        @* Both directions shown. "Due in 12 days" is as useful to whoever is
+                           chasing as "overdue by 12". *@
+                        @if (days > 0) { <span class="sc-badge">@days @(days == 1 ? "day" : "days") overdue</span> }
+                        else if (days < 0) { <span class="sc-cell-sub">due in @(-days) @(days == -1 ? "day" : "days")</span> }
+                    </td>
+                    <td class="sc-num">@r.GrandTotal.ToString("N2")</td>
+                    <td class="sc-num">@(r.CreditedTotal == 0 ? "—" : r.CreditedTotal.ToString("N2"))</td>
+                    <td class="sc-num">@(r.ReceivedTotal == 0 ? "—" : r.ReceivedTotal.ToString("N2"))</td>
+                    <td class="sc-num"><strong>@r.OutstandingZar.ToString("N2")</strong></td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="7" class="sc-empty">Nothing outstanding. Every issued invoice has been settled or credited.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+<p class="sc-data-note">Credit notes come off the balance before receipts do &mdash; a credit cancels part of the charge, it is not a payment. A negative balance means the client has overpaid.</p>

@@ -1,0 +1,180 @@
+@model SoftCo.Models.CustomerInvoice
+@using SoftCo.Models
+@{
+    var canReceipt = User.CanRecordPayments();
+    var canCredit = User.CanEditOrders();
+    var receipts = Model.Receipts.OrderByDescending(r => r.ReceivedDate).ThenByDescending(r => r.Id).ToList();
+    var credits = Model.CreditNotes.OrderByDescending(c => c.IssueDate).ThenByDescending(c => c.Id).ToList();
+    var headroom = Math.Max(0m, Model.GrandTotal - Model.CreditedTotal);
+}
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">Money in</p>
+        <span class="sc-muted">
+            @if (Model.OutstandingZar > 0)
+            {
+                <text>R @Model.OutstandingZar.ToString("N2") outstanding</text>
+            }
+            else if (Model.OutstandingZar < 0)
+            {
+                @* An overpayment is money Soft & Co owe back. Never hidden behind a zero. *@
+                <text>R @Math.Abs(Model.OutstandingZar).ToString("N2") overpaid</text>
+            }
+            else
+            {
+                <text>Settled</text>
+            }
+        </span>
+    </div>
+
+    <dl class="sc-dl">
+        <div><dt>Invoiced</dt><dd>R @Model.GrandTotal.ToString("N2")</dd></div>
+        <div><dt>Credited</dt><dd>R @Model.CreditedTotal.ToString("N2")</dd></div>
+        <div><dt>Received</dt><dd>R @Model.ReceivedTotal.ToString("N2")</dd></div>
+        <div><dt>Outstanding</dt><dd><strong>R @Model.OutstandingZar.ToString("N2")</strong></dd></div>
+    </dl>
+
+    @if (receipts.Count > 0)
+    {
+        <hr class="sc-rule" />
+        <p class="sc-label">Receipts</p>
+        <div class="sc-table-wrap">
+            <table class="sc-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Received</th>
+                        <th scope="col">Method</th>
+                        <th scope="col">Reference</th>
+                        <th scope="col" class="sc-num">Amount</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var r in receipts)
+                {
+                    <tr>
+                        <td>@r.ReceivedDate.ToString("dd MMM yyyy")<span class="sc-cell-sub">@(r.CreatedById ?? "unknown")</span></td>
+                        <td class="sc-muted">@r.Method.Label()</td>
+                        <td class="sc-muted">@(r.Reference ?? "—")</td>
+                        <td class="sc-num">@r.AmountZar.ToString("N2")</td>
+                        <td>
+                            <div class="sc-row-actions">
+                                @if (canReceipt)
+                                {
+                                    <form method="post" asp-controller="CustomerInvoices" asp-action="RemoveReceipt"
+                                          asp-route-id="@Model.Id" class="sc-inline-form">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="receiptId" value="@r.Id" />
+                                        <button type="submit" class="sc-linkish">Remove</button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (credits.Count > 0)
+    {
+        <hr class="sc-rule" />
+        <p class="sc-label">Credit notes</p>
+        <ul class="sc-history">
+            @foreach (var c in credits)
+            {
+                <li>
+                    <span class="sc-history-when">@(c.IssueDate?.ToString("dd MMM yyyy") ?? "draft")</span>
+                    <strong>@(c.CreditNoteNumber ?? c.Status.Label())</strong>
+                    <span class="sc-muted">· R @c.GrandTotal.ToString("N2") · @(c.IssuedByName ?? c.CreatedById ?? "unknown")</span>
+                    <span class="sc-cell-sub">@c.Reason</span>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Model.IsIssued && canReceipt && Model.OutstandingZar > 0)
+    {
+        <hr class="sc-rule" />
+        <form method="post" asp-controller="CustomerInvoices" asp-action="RecordReceipt" asp-route-id="@Model.Id"
+              class="sc-form-grid">
+            @Html.AntiForgeryToken()
+            <div>
+                <label class="form-label" for="receiptAmount">Amount received (ZAR)</label>
+                <input class="form-control sc-num" id="receiptAmount" name="amountZar" type="number"
+                       step="0.01" min="0.01" value="@Model.OutstandingZar.ToString("0.00")" required />
+                <span class="sc-hint">Pre-filled with the balance. Change it for a part payment.</span>
+            </div>
+            <div>
+                <label class="form-label" for="receiptDate">Date received</label>
+                <input class="form-control" id="receiptDate" name="receivedDate" type="date"
+                       value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
+                <span class="sc-hint">The bank's date, not today's, so ageing stays honest.</span>
+            </div>
+            <div>
+                <label class="form-label" for="receiptMethod">Method</label>
+                <select class="form-select" id="receiptMethod" name="method">
+                    @foreach (ReceiptMethod m in Enum.GetValues<ReceiptMethod>())
+                    {
+                        <option value="@m">@m.Label()</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="receiptRef">Bank reference</label>
+                <input class="form-control" id="receiptRef" name="reference" />
+            </div>
+            <div class="sc-upload-action">
+                <button type="submit" class="btn btn-primary">Record receipt</button>
+            </div>
+        </form>
+    }
+
+    @if (Model.IsIssued && canCredit && headroom > 0)
+    {
+        <hr class="sc-rule" />
+        <details class="sc-add-contact">
+            <summary>Raise a credit note</summary>
+            @* The only way to correct an issued invoice. Editing one is not offered anywhere,
+               because the VAT Act requires a credit note to reverse a tax invoice. *@
+            <p class="sc-hint">
+                An issued invoice cannot be changed. A credit note reverses part or all of it, and is
+                what the VAT Act requires. At most R @headroom.ToString("N2") can still be credited.
+            </p>
+            <form method="post" asp-controller="CustomerInvoices" asp-action="CreditNote" asp-route-id="@Model.Id"
+                  class="sc-form-grid">
+                @Html.AntiForgeryToken()
+                <div>
+                    <label class="form-label" for="creditDescription">What is being credited</label>
+                    <input class="form-control" id="creditDescription" name="description"
+                           placeholder="Dining chairs - two returned" required />
+                </div>
+                <div>
+                    <label class="form-label" for="creditAmount">Amount (excl VAT)</label>
+                    <input class="form-control sc-num" id="creditAmount" name="amount" type="number"
+                           step="0.01" min="0.01" required />
+                </div>
+                <div>
+                    <label class="form-label" for="creditVat">VAT</label>
+                    <select class="form-select" id="creditVat" name="vatTreatment">
+                        @foreach (VatTreatment t in Enum.GetValues<VatTreatment>())
+                        {
+                            <option value="@t">@t.Label()</option>
+                        }
+                    </select>
+                    <span class="sc-hint">Reversed at the rate the invoice was issued at, not today's.</span>
+                </div>
+                <div>
+                    <label class="form-label" for="creditReason">Why</label>
+                    <input class="form-control" id="creditReason" name="reason" minlength="10" required />
+                    <span class="sc-hint">Printed on the credit note. An auditor will ask.</span>
+                </div>
+                <div class="sc-upload-action">
+                    <button type="submit" class="btn btn-secondary">Issue credit note</button>
+                </div>
+            </form>
+        </details>
+    }
+</div>

@@ -110,6 +110,12 @@ public class CustomerInvoice
     /// </summary>
     public ICollection<Approval> Approvals { get; set; } = new List<Approval>();
 
+    /// <summary>Money received against this invoice. Requires loading to use the balances below.</summary>
+    public ICollection<InvoiceReceipt> Receipts { get; set; } = new List<InvoiceReceipt>();
+
+    /// <summary>Credit notes raised against this invoice, issued or not.</summary>
+    public ICollection<CreditNote> CreditNotes { get; set; } = new List<CreditNote>();
+
     // --- Derived -----------------------------------------------------------------------------
 
     /// <summary>
@@ -120,6 +126,28 @@ public class CustomerInvoice
         DueDate is DateOnly due
         && due < today
         && Status is CustomerInvoiceStatus.Issued or CustomerInvoiceStatus.PartPaid;
+
+    /// <summary>
+    /// Total received. Requires <see cref="Receipts"/> to be loaded.
+    /// </summary>
+    [NotMapped]
+    public decimal ReceivedTotal => Receipts.Sum(r => r.AmountZar);
+
+    /// <summary>
+    /// Total credited. Only issued credit notes count - a draft is somebody thinking aloud, and
+    /// counting it would understate what the client owes. Requires <see cref="CreditNotes"/> to be
+    /// loaded.
+    /// </summary>
+    [NotMapped]
+    public decimal CreditedTotal =>
+        CreditNotes.Where(c => c.Status == CreditNoteStatus.Issued).Sum(c => c.GrandTotal);
+
+    /// <summary>
+    /// What is still to be collected. Negative when the client has overpaid, deliberately: that is
+    /// money owed back, and a zero would hide it.
+    /// </summary>
+    [NotMapped]
+    public decimal OutstandingZar => GrandTotal - CreditedTotal - ReceivedTotal;
 
     /// <summary>Whether this invoice still counts as money the client owes.</summary>
     [NotMapped]

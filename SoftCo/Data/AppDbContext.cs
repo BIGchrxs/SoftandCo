@@ -21,6 +21,9 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<CustomerInvoice> CustomerInvoices => Set<CustomerInvoice>();
     public DbSet<CustomerInvoiceLine> CustomerInvoiceLines => Set<CustomerInvoiceLine>();
+    public DbSet<InvoiceReceipt> InvoiceReceipts => Set<InvoiceReceipt>();
+    public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
+    public DbSet<CreditNoteLine> CreditNoteLines => Set<CreditNoteLine>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -139,6 +142,49 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             // it, exactly as approving an order does.
             e.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid")
              .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
+        });
+
+        // --- InvoiceReceipt ------------------------------------------------------------------
+        b.Entity<InvoiceReceipt>(e =>
+        {
+            e.HasOne(x => x.CustomerInvoice)
+             .WithMany(i => i.Receipts)
+             .HasForeignKey(x => x.CustomerInvoiceId)
+             // Restrict, unlike invoice lines. A line has no meaning apart from its invoice, but a
+             // receipt is money that actually arrived, and it must not be able to vanish because
+             // somebody deleted the document it was received against.
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(x => x.CustomerInvoiceId);
+            e.HasIndex(x => x.ReceivedDate);
+        });
+
+        // --- CreditNote ----------------------------------------------------------------------
+        b.Entity<CreditNote>(e =>
+        {
+            // Allocated on issue, so nullable while drafting - the same filtered unique index the
+            // PO and invoice numbers use.
+            e.HasIndex(x => x.CreditNoteNumber).IsUnique().HasFilter("\"CreditNoteNumber\" IS NOT NULL");
+
+            e.HasOne(x => x.CustomerInvoice)
+             .WithMany(i => i.CreditNotes)
+             .HasForeignKey(x => x.CustomerInvoiceId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(x => x.CustomerInvoiceId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.SyncStatus);
+        });
+
+        // --- CreditNoteLine --------------------------------------------------------------------
+        b.Entity<CreditNoteLine>(e =>
+        {
+            e.HasOne(x => x.CreditNote)
+             .WithMany(c => c.Lines)
+             .HasForeignKey(x => x.CreditNoteId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => x.CreditNoteId);
         });
 
         // --- CustomerInvoiceLine -------------------------------------------------------------

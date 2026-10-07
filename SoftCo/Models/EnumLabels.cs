@@ -59,6 +59,23 @@ public static class EnumLabels
         _ => o.ToString()
     };
 
+    public static string Label(this ReceiptMethod m) => m switch
+    {
+        ReceiptMethod.Eft => "EFT",
+        ReceiptMethod.Card => "Card",
+        ReceiptMethod.Cash => "Cash",
+        ReceiptMethod.Other => "Other",
+        _ => m.ToString()
+    };
+
+    public static string Label(this CreditNoteStatus s) => s switch
+    {
+        CreditNoteStatus.Draft => "Draft",
+        CreditNoteStatus.Issued => "Issued",
+        CreditNoteStatus.Cancelled => "Cancelled",
+        _ => s.ToString()
+    };
+
     public static string Label(this CustomerInvoiceStatus s) => s switch
     {
         CustomerInvoiceStatus.Draft => "Draft",

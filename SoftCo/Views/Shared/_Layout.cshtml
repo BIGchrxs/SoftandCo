@@ -51,6 +51,7 @@
                     @* Only offered to people who can decide. The controller enforces it separately -
                        hiding a link is presentation, not access control. *@
                     <li><a class="@Active("CustomerInvoices")" asp-controller="CustomerInvoices" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">▤</span>Invoices</a></li>
+                    <li><a class="@Active("CustomerInvoices", "Receivables")" asp-controller="CustomerInvoices" asp-action="Receivables"><span class="sc-nav-icon" aria-hidden="true">◔</span>Receivables</a></li>
                     @if (User.CanApprove())
                     {
                         <li><a class="@Active("Approvals")" asp-controller="Approvals" asp-action="Queue"><span class="sc-nav-icon" aria-hidden="true">✓</span>Approvals</a></li>

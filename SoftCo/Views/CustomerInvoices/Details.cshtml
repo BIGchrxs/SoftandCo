@@ -76,6 +76,8 @@
     <p class="sc-data-note">VAT is calculated and rounded on each line, then added up &mdash; so the total always matches the rows above it.</p>
 </div>
 
+@await Html.PartialAsync("_InvoiceReceipts", i)
+
 @* The workflow panel. One place decides what can happen next, so the screen never offers an action
    the service would refuse. *@
 <div class="sc-card @(i.Status is CustomerInvoiceStatus.PendingApproval or CustomerInvoiceStatus.Rejected ? "sc-notice" : "")">

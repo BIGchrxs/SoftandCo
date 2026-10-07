@@ -235,3 +235,25 @@ public enum CustomerInvoiceStatus
     Rejected        = 6,
     Cancelled       = 7
 }
+
+/// <summary>How money arrived. Kept coarse: the bank reference is what actually matches a statement.</summary>
+public enum ReceiptMethod
+{
+    Eft   = 0,
+    Card  = 1,
+    Cash  = 2,
+    Other = 3
+}
+
+/// <summary>
+/// Where a credit note has got to. Draft is 0, as everywhere else.
+///
+/// Only an Issued credit note reduces what a client owes - a draft is somebody thinking aloud, and
+/// counting it would understate the receivable.
+/// </summary>
+public enum CreditNoteStatus
+{
+    Draft     = 0,
+    Issued    = 1,
+    Cancelled = 2
+}

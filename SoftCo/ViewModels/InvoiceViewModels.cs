@@ -141,3 +141,40 @@ public class InvoiceDetailsViewModel
     public string? WhyNotEditable { get; set; }
     public DateOnly Today { get; set; }
 }
+
+/// <summary>One line of the receivables worklist.</summary>
+public class ReceivableRowViewModel
+{
+    public int Id { get; set; }
+    public string InvoiceNumber { get; set; } = "";
+    public string ClientName { get; set; } = "";
+    public string? ProjectName { get; set; }
+    public DateOnly? IssueDate { get; set; }
+    public DateOnly? DueDate { get; set; }
+
+    public decimal GrandTotal { get; set; }
+    public decimal CreditedTotal { get; set; }
+    public decimal ReceivedTotal { get; set; }
+    public decimal OutstandingZar { get; set; }
+
+    /// <summary>
+    /// How long past due. Negative means it is not due yet - shown as such rather than clamped,
+    /// because "due in 12 days" is as useful to whoever is chasing as "overdue by 12".
+    /// </summary>
+    public int DaysPastDue(DateOnly today) =>
+        DueDate is DateOnly due ? today.DayNumber - due.DayNumber : 0;
+}
+
+/// <summary>
+/// What clients owe. The mirror of the supplier-side Outstanding page - the same question asked in
+/// the other direction, and the half of the business this system could not answer until now.
+/// </summary>
+public class ReceivablesViewModel
+{
+    public List<ReceivableRowViewModel> Rows { get; set; } = [];
+    public DateOnly Today { get; set; }
+
+    public decimal TotalOutstanding => Rows.Sum(r => r.OutstandingZar);
+    public decimal TotalOverdue => Rows.Where(r => r.DaysPastDue(Today) > 0).Sum(r => r.OutstandingZar);
+    public int OverdueCount => Rows.Count(r => r.DaysPastDue(Today) > 0);
+}

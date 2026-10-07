@@ -99,6 +99,7 @@ builder.Services.AddScoped<IPurchaseOrderApprovalService, PurchaseOrderApprovalS
 builder.Services.AddScoped<IPaymentReleaseService, PaymentReleaseService>();
 builder.Services.AddScoped<ICustomerInvoiceService, CustomerInvoiceService>();
 builder.Services.AddScoped<ICustomerInvoiceDocumentService, CustomerInvoiceDocumentService>();
+builder.Services.AddScoped<IReceivableService, ReceivableService>();
 builder.Services.AddScoped<IApprovalNotifier, ApprovalNotifier>();
 
 // Email: in Development the composed message is written to App_Data/sent-email instead of being
