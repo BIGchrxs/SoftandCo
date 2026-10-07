@@ -157,6 +157,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
             e.HasIndex(x => x.CustomerInvoiceId);
             e.HasIndex(x => x.ReceivedDate);
+            e.HasIndex(x => x.SyncStatus);
         });
 
         // --- CreditNote ----------------------------------------------------------------------

@@ -38,6 +38,15 @@ public class InvoiceReceipt
     [StringLength(1000)]
     public string? Notes { get; set; }
 
+    // --- External accounting system ----------------------------------------------------------
+    // Present on receipts for the same reason as on clients, invoices and credit notes: a receipt
+    // is a transaction an accounting system needs to see, and adding these columns after a year of
+    // receipts exist would mean backfilling every one of them.
+    [StringLength(100)] public string? ExternalId { get; set; }
+    [StringLength(100)] public string? ExternalReference { get; set; }
+    public SyncStatus SyncStatus { get; set; } = SyncStatus.NotSynced;
+    public DateTime? LastSyncedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [StringLength(450)] public string? CreatedById { get; set; }
 }

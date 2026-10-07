@@ -1199,3 +1199,22 @@ a:hover {
     width: 5.5rem;
     padding-block: 0.25rem;
 }
+
+/* Accounting-sync state. Quiet by default: until an integration exists every record is "Not
+   synced", and a badge that shouts on every screen is one people learn to stop seeing. */
+.sc-sync {
+    font-variant-numeric: normal;
+    opacity: 0.75;
+}
+
+.sc-sync-synced {
+    opacity: 1;
+    border-color: var(--sc-accent);
+    color: var(--sc-accent);
+}
+
+.sc-sync-failed {
+    opacity: 1;
+    border-color: var(--sc-accent-strong);
+    color: var(--sc-accent-strong);
+}

@@ -1,0 +1,14 @@
+@model SoftCo.Models.SyncStatus
+
+@* Whether a record has reached the accounting system.
+
+   Read-only, and will say "Not synced" on everything until an integration exists - there is no Xero
+   code in this system and none is planned in this work. It is here so that the day one is wired up,
+   the state is already modelled, indexed and on screen rather than being retrofitted across four
+   tables of live financial records.
+
+   Deliberately rendered on detail screens only, never on every row of a list. A badge that says the
+   same thing on all four hundred rows is not information, and people stop reading it long before it
+   starts meaning anything. *@
+
+<span class="sc-badge sc-sync sc-sync-@Model.ToString().ToLowerInvariant()">@Model.Label()</span>

@@ -31,6 +31,13 @@
         <div><dt>Issued</dt><dd>@(i.IssueDate?.ToString("dd MMM yyyy") ?? "Not yet issued")</dd></div>
         <div><dt>Due</dt><dd>@(i.DueDate?.ToString("dd MMM yyyy") ?? "—") @if (overdue) { <span class="sc-badge">Overdue</span> }</dd></div>
         <div><dt>Terms</dt><dd>@i.PaymentTermsDays days</dd></div>
+        <div>
+            <dt>Accounting</dt>
+            <dd>
+                @await Html.PartialAsync("_SyncBadge", i.SyncStatus)
+                <span class="sc-cell-sub">No accounting integration is connected yet.</span>
+            </dd>
+        </div>
     </dl>
 </div>
 

@@ -146,7 +146,7 @@
         @if (!isNew)
         {
             <p class="sc-muted" style="margin-top:1rem">
-                Accounting system: <span class="sc-badge">@Model.SyncStatus.Label()</span>
+                Accounting system: @await Html.PartialAsync("_SyncBadge", Model.SyncStatus)
                 <span class="sc-hint">Read-only. There is no accounting integration yet.</span>
             </p>
         }
