@@ -79,6 +79,33 @@ public class SupplierOrder
     [Column(TypeName = "numeric(18,2)")]
     public decimal InvoiceValueZar { get; set; }
 
+    /// <summary>
+    /// Whether <see cref="InvoiceValueZar"/> includes South African VAT.
+    ///
+    /// Defaults to <see cref="SupplierVatTreatment.Unknown"/>, which is the honest label for every
+    /// order that predates this question being asked. See the enum for why these are not backfilled
+    /// by dividing by 1.15.
+    /// </summary>
+    public SupplierVatTreatment VatTreatment { get; set; } = SupplierVatTreatment.Unknown;
+
+    /// <summary>
+    /// The cost to Soft &amp; Co, net of any VAT they reclaim. This is what gross profit is measured
+    /// against: revenue excludes VAT, so cost must too, or the comparison is meaningless.
+    ///
+    /// <para>The rate is a parameter rather than a constant here, for the same reason invoice lines
+    /// freeze their own rate - 14% applied until 2018, and dividing a 2017 order by 1.15 would be
+    /// quietly wrong. Today the caller passes the configured standard rate; if Soft &amp; Co ever
+    /// hold orders spanning a rate change, this is where a date-based lookup belongs.</para>
+    ///
+    /// <para>An <see cref="SupplierVatTreatment.Unknown"/> order returns its gross figure unchanged.
+    /// That overstates cost and so understates margin, which is the conservative direction, and the
+    /// report counts those rows on screen rather than hiding the assumption.</para>
+    /// </summary>
+    public decimal CostExclVatZar(decimal vatRatePercent) =>
+        VatTreatment == SupplierVatTreatment.Inclusive && vatRatePercent > 0m
+            ? Math.Round(InvoiceValueZar / (1m + vatRatePercent / 100m), 2, MidpointRounding.AwayFromZero)
+            : InvoiceValueZar;
+
     [StringLength(2000)]
     public string? Notes { get; set; }
 

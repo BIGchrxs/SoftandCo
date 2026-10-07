@@ -65,6 +65,14 @@
                     <li><a class="@Active("PaymentContacts")" asp-controller="PaymentContacts" asp-action="Index"><span class="sc-nav-icon" aria-hidden="true">✉</span>Payment contacts</a></li>
                 </ul>
 
+                @* Margin is a narrower audience than money. The controller enforces it separately. *@
+                @if (User.CanSeeMargin())
+                {
+                    <ul class="sc-nav">
+                        <li><a class="@Active("Reports")" asp-controller="Reports" asp-action="GrossProfit"><span class="sc-nav-icon" aria-hidden="true">◱</span>Gross profit</a></li>
+                    </ul>
+                }
+
                 @* Administration is a separate group, and only administrators are offered it. The
                    controller enforces this independently - hiding a link is presentation, not
                    access control. *@

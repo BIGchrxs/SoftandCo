@@ -1,0 +1,45 @@
+@model SoftCo.ViewModels.OrderEditViewModel
+
+@* Which projects an order serves, and - only when it serves more than one - how its cost splits
+   between them.
+
+   Shared by the international and local order forms. Both can span projects, and a form that cannot
+   express a split while its twin can is the kind of inconsistency somebody hits at the worst moment.
+
+   The percentage box is hidden until a second project is ticked. Most orders serve one project and
+   should never be asked a question with only one answer; the server sets their share to 1 whatever
+   the form does, so nothing here is load-bearing. *@
+
+<p class="sc-label">Projects</p>
+<p class="sc-muted" style="font-size:.82rem">
+    An order may serve more than one project &mdash; tick every project it belongs to.
+</p>
+
+<div class="sc-checks">
+    @foreach (var p in Model.AllProjects)
+    {
+        <label class="sc-check">
+            <input type="checkbox" name="ProjectIds" value="@p.Id" checked="@(Model.ProjectIds.Contains(p.Id))"
+                   data-project-check="@p.Id" />
+            <span>@p.Name</span>
+            <span class="sc-share" data-project-share="@p.Id" hidden>
+                @* Four decimal places, not two. A share is stored at six, so a third renders as
+                   33.3333 - at two places three of them would come to 99.99 and the form would
+                   refuse its own unchanged values. *@
+                <input class="form-control sc-num" type="number" step="0.0001" min="0" max="100"
+                       name="ProjectShares[@p.Id]"
+                       value="@(Model.ProjectShares.TryGetValue(p.Id, out var sh) && sh is decimal v ? v.ToString("0.####") : "")" />
+                <span class="sc-hint">% of cost</span>
+            </span>
+        </label>
+    }
+</div>
+
+@* The share rule attaches its error to ProjectIds, and the forms' summaries are ModelOnly, so
+   without this the save is silently refused and the form simply reappears unchanged. *@
+<span asp-validation-for="ProjectIds" class="sc-error"></span>
+
+<p class="sc-hint" data-share-hint hidden>
+    This order is split across more than one project, so say how much of its cost belongs to each.
+    The shares have to add up to 100%.
+</p>

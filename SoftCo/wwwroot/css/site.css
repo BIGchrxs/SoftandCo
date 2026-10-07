@@ -1185,3 +1185,17 @@ a:hover {
     border-color: var(--sc-ink);
     color: var(--sc-white);
 }
+
+/* The allocation share beside a project checkbox. Inline and quiet: it is a detail on a line that
+   already says what it is, not a field in its own right. */
+.sc-share {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin-left: 0.5rem;
+}
+
+.sc-share input {
+    width: 5.5rem;
+    padding-block: 0.25rem;
+}

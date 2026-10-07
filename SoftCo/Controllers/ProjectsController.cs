@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SoftCo.Data;
 using SoftCo.Models;
+using SoftCo.Services.Reporting;
 using SoftCo.ViewModels;
 
 namespace SoftCo.Controllers;
@@ -28,10 +29,17 @@ public class ProjectsController : Controller
             .AsSplitQuery()
             .ToListAsync();
 
+        // Allocated by share, not counted in full against every linked project. Until
+        // OrderProject.AllocationShare existed this summed an order's whole balance into each of
+        // its projects - which is why the note at the foot of this page had to warn that the
+        // figures were not additive. They are now.
         ViewBag.Exposure = projects.ToDictionary(
             p => p.Id,
-            p => orders.Where(o => o.OrderProjects.Any(op => op.ProjectId == p.Id))
-                       .Sum(o => o.OutstandingZar));
+            p => orders.SelectMany(o => o.OrderProjects
+                                         .Where(op => op.ProjectId == p.Id)
+                                         .Select(op => GrossProfitMath.Allocate(o.OutstandingZar,
+                                                                                op.AllocationShare)))
+                       .Sum());
 
         ViewBag.Counts = projects.ToDictionary(
             p => p.Id,

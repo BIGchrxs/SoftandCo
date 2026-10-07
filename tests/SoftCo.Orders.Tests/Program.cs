@@ -2,6 +2,7 @@ using System.Text;
 using SoftCo.Models;
 using SoftCo.Services.Approvals;
 using SoftCo.Services.Invoicing;
+using SoftCo.Services.Reporting;
 using SoftCo.Services;
 using SoftCo.Services.Documents;
 
@@ -552,6 +553,61 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
 
     Check(ReceivableMath.CreditHeadroom(1000m, 250m) == 750m, "Headroom is what is left to credit");
     Check(ReceivableMath.CreditHeadroom(1000m, 1000m) == 0m, "No headroom on a fully credited invoice");
+}
+
+
+// --- Allocation and gross profit --------------------------------------------------------
+// Written before the implementation. This is the number the business is actually run on, and it
+// sits on top of a join table that until now had no amount in it at all.
+{
+    // An even split has to sum to exactly 1, which is the whole difficulty: 1/3 at six decimal
+    // places is 0.333333, and three of those come to 0.999999. The remainder has to land
+    // somewhere rather than being quietly lost, or a third of every three-project order's cost
+    // disappears from gross profit.
+    Check(GrossProfitMath.EvenSplit(1).SequenceEqual([1m]), "One project takes the whole order");
+    Check(GrossProfitMath.EvenSplit(2).Sum() == 1m, "Two shares sum to exactly 1");
+    Check(GrossProfitMath.EvenSplit(3).Sum() == 1m, "Three shares sum to exactly 1 despite the recurring decimal");
+    Check(GrossProfitMath.EvenSplit(7).Sum() == 1m, "Seven shares sum to exactly 1");
+
+    var three = GrossProfitMath.EvenSplit(3);
+    Check(three[0] == 0.333333m && three[1] == 0.333333m, "The first shares are the rounded value");
+    Check(three[2] == 0.333334m, "and the last absorbs the remainder");
+
+    Check(GrossProfitMath.EvenSplit(0).Count == 0, "No projects, no shares");
+
+    // Validation of hand-entered shares.
+    Check(GrossProfitMath.SharesAreValid([1m]), "A single full share is valid");
+    Check(GrossProfitMath.SharesAreValid([0.5m, 0.5m]), "A half-and-half split is valid");
+    Check(GrossProfitMath.SharesAreValid([0.333333m, 0.333333m, 0.333334m]), "An even split is valid");
+    Check(!GrossProfitMath.SharesAreValid([0.5m, 0.4m]), "Shares that do not sum to 1 are refused");
+    Check(!GrossProfitMath.SharesAreValid([0.5m, 0.6m]), "Over-allocating is refused");
+    Check(!GrossProfitMath.SharesAreValid([1.5m, -0.5m]), "A negative share is refused even if the sum works");
+    Check(!GrossProfitMath.SharesAreValid([]), "An order with no projects has nothing to validate against");
+
+    // Cost allocation. This is what stops one order's full value being counted into every project
+    // it touches - the double-count that made project balances non-additive.
+    Check(GrossProfitMath.Allocate(100000m, 1m) == 100000m, "A whole share takes the whole cost");
+    Check(GrossProfitMath.Allocate(100000m, 0.5m) == 50000m, "A half share takes half");
+    Check(GrossProfitMath.Allocate(103734m, 0.333333m) == 34577.97m, "A third is rounded to the cent");
+
+    // The sum of the allocated parts must come back to the whole, give or take the cent that
+    // rounding costs - never a third of the order.
+    var order = 103734.00m;
+    var parts = GrossProfitMath.EvenSplit(3).Select(sh => GrossProfitMath.Allocate(order, sh)).ToList();
+    Check(Math.Abs(parts.Sum() - order) <= 0.01m, "Allocated parts add back up to the order value");
+
+    // Gross profit itself.
+    Check(GrossProfitMath.GrossProfit(100000m, 60000m) == 40000m, "Revenue less cost");
+    Check(GrossProfitMath.GrossProfit(100000m, 120000m) == -20000m, "A loss is shown as a loss, not clamped");
+    Check(GrossProfitMath.GrossProfit(0m, 5000m) == -5000m, "Cost with no revenue is all loss");
+
+    // Margin. Dividing by zero revenue is not 0% and not infinity - it is a question that cannot
+    // be answered, so it reports nothing.
+    Check(GrossProfitMath.MarginPercent(100000m, 40000m) == 40m, "40k on 100k is 40%");
+    Check(GrossProfitMath.MarginPercent(100000m, -20000m) == -20m, "A loss shows a negative margin");
+    Check(GrossProfitMath.MarginPercent(0m, 0m) is null, "No revenue means no margin, not 0%");
+    Check(GrossProfitMath.MarginPercent(0m, -5000m) is null, "Cost with no revenue still has no margin");
+    Check(GrossProfitMath.MarginPercent(3m, 1m) == 33.33m, "Margin is rounded to two places");
 }
 
 Console.WriteLine($"All {passed} checks passed.");

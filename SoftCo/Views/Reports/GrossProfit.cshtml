@@ -1,0 +1,109 @@
+@model SoftCo.Services.Reporting.GrossProfitReport
+@{
+    ViewData["Title"] = "Gross profit";
+    ViewData["Description"] = "What each project made, after what it cost.";
+    var ranked = Model.Projects.Where(p => p.Revenue != 0 || p.Cost != 0)
+                               .OrderByDescending(p => p.GrossProfit).ToList();
+}
+
+@await Html.PartialAsync("_Flash")
+
+<div class="sc-kpis">
+    <div class="sc-kpi"><p class="sc-label">Revenue</p><p class="sc-kpi-value">@Model.TotalRevenue.ToString("N2")</p><p class="sc-kpi-caption">Invoiced, excluding VAT, less credits</p></div>
+    <div class="sc-kpi"><p class="sc-label">Cost</p><p class="sc-kpi-value">@Model.TotalCost.ToString("N2")</p><p class="sc-kpi-caption">Supplier orders, allocated to projects</p></div>
+    <div class="sc-kpi"><p class="sc-label">Gross profit</p><p class="sc-kpi-value">@Model.TotalGrossProfit.ToString("N2")</p><p class="sc-kpi-caption">Revenue less cost</p></div>
+    <div class="sc-kpi"><p class="sc-label">Margin</p><p class="sc-kpi-value">@(Model.TotalMarginPercent is decimal m ? m.ToString("0.##") + "%" : "—")</p><p class="sc-kpi-caption">@(Model.TotalMarginPercent is null ? "Nothing invoiced yet" : "Gross profit over revenue")</p></div>
+</div>
+
+@* The report states what it cannot know rather than presenting a clean number it cannot justify. *@
+@if (Model.UnknownVatOrderCount > 0 || Model.UnallocatedProjectCount > 0)
+{
+    <div class="sc-card sc-notice">
+        <p class="sc-label">Read this before trusting the figures</p>
+
+        @if (Model.UnknownVatOrderCount > 0)
+        {
+            <p class="sc-muted">
+                <strong>@Model.UnknownVatOrderCount @(Model.UnknownVatOrderCount == 1 ? "order has" : "orders have")
+                no recorded VAT treatment.</strong>
+                A local invoice of R11,500 normally contains R1,500 of input VAT that Soft &amp; Co
+                reclaim, so the real cost is R10,000 &mdash; but an imported order carries no South
+                African VAT at all. Until each order says which it is, its full value is counted as
+                cost. That overstates cost and understates margin by up to
+                @Model.VatRatePercent.ToString("0.##")% on the orders concerned, so these figures are
+                a floor rather than an estimate. Set the treatment on each order as you touch it.
+            </p>
+        }
+
+        @if (Model.UnallocatedProjectCount > 0)
+        {
+            <p class="sc-muted">
+                <strong>@Model.UnallocatedProjectCount @(Model.UnallocatedProjectCount == 1 ? "project has" : "projects have")
+                no client.</strong>
+                They cannot be invoiced, so any cost against them shows as pure loss here.
+                <a asp-controller="Projects" asp-action="Index">Assign them</a>.
+            </p>
+        }
+    </div>
+}
+
+<div class="sc-card">
+    <div class="sc-card-head">
+        <p class="sc-label" style="margin-bottom:0">By project</p>
+        <span class="sc-muted">@ranked.Count with activity</span>
+    </div>
+
+    <div class="sc-table-wrap">
+        <table class="sc-table">
+            <thead>
+                <tr>
+                    <th scope="col">Project</th>
+                    <th scope="col">Client</th>
+                    <th scope="col" class="sc-num">Orders</th>
+                    <th scope="col" class="sc-num">Invoices</th>
+                    <th scope="col" class="sc-num">Revenue</th>
+                    <th scope="col" class="sc-num">Cost</th>
+                    <th scope="col" class="sc-num">Gross profit</th>
+                    <th scope="col" class="sc-num">Margin</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var p in ranked)
+            {
+                <tr>
+                    <td>
+                        <a asp-controller="Orders" asp-action="Index" asp-route-ProjectId="@p.ProjectId">@p.ProjectName</a>
+                        <span class="sc-cell-sub">@p.ProjectCode</span>
+                    </td>
+                    <td class="sc-muted">
+                        @(p.ClientName ?? "—")
+                        @if (p.ClientName is null) { <span class="sc-badge">No client</span> }
+                    </td>
+                    <td class="sc-num">
+                        @p.OrderCount
+                        @* Flagged per row as well as in total: a project whose whole cost base is
+                           unlabelled deserves more scepticism than one with a single such order. *@
+                        @if (p.UnknownVatOrderCount > 0) { <span class="sc-cell-sub">@p.UnknownVatOrderCount unlabelled</span> }
+                    </td>
+                    <td class="sc-num">@p.InvoiceCount</td>
+                    <td class="sc-num">@p.Revenue.ToString("N2")</td>
+                    <td class="sc-num">@p.Cost.ToString("N2")</td>
+                    <td class="sc-num"><strong>@p.GrossProfit.ToString("N2")</strong></td>
+                    <td class="sc-num">@(p.MarginPercent is decimal pm ? pm.ToString("0.##") + "%" : "—")</td>
+                </tr>
+            }
+            @if (ranked.Count == 0)
+            {
+                <tr><td colspan="8" class="sc-empty">No project has both costs and invoices yet. Gross profit needs orders on one side and issued invoices on the other.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="sc-data-note">
+    Revenue excludes VAT, because VAT is SARS's money passing through &mdash; counting it would
+    overstate margin by about @Model.VatRatePercent.ToString("0.##")%. Cost is each order's value
+    multiplied by that project's share, so an order serving two projects counts once in each rather
+    than fully in both. A project with cost and no revenue shows no margin at all, not 0%.
+</p>

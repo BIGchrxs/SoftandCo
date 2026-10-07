@@ -76,6 +76,27 @@ public class OrderEditViewModel
     [Display(Name = "Projects")]
     public List<int> ProjectIds { get; set; } = [];
 
+    /// <summary>
+    /// How the order's cost is split across its projects, keyed by project id and expressed as a
+    /// percentage because that is what people type.
+    ///
+    /// Only meaningful - and only shown - when more than one project is selected. With a single
+    /// project the share is 1 and there is nothing to decide, which is the case for most orders.
+    /// </summary>
+    /// <remarks>
+    /// Nullable values on purpose. An empty box must bind as "not entered" rather than failing to
+    /// parse - a failed bind makes the whole form invalid before any of its own rules run, and the
+    /// order is then refused with no message anywhere on the page.
+    /// </remarks>
+    public Dictionary<int, decimal?> ProjectShares { get; set; } = [];
+
+    /// <summary>
+    /// Whether the Rand invoice value includes South African VAT. Needed for gross profit: a local
+    /// invoice usually includes VAT that Soft &amp; Co reclaim, an imported one carries none.
+    /// </summary>
+    [Display(Name = "VAT on this invoice")]
+    public SupplierVatTreatment VatTreatment { get; set; } = SupplierVatTreatment.Unknown;
+
     [Display(Name = "Delivery status")]
     public FulfilmentStatus FulfilmentStatus { get; set; } = FulfilmentStatus.InProduction;
 

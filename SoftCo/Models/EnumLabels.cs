@@ -59,6 +59,15 @@ public static class EnumLabels
         _ => o.ToString()
     };
 
+    public static string Label(this SupplierVatTreatment t) => t switch
+    {
+        SupplierVatTreatment.Unknown => "Not recorded",
+        SupplierVatTreatment.Inclusive => "Includes VAT",
+        SupplierVatTreatment.Exclusive => "Excludes VAT",
+        SupplierVatTreatment.NotApplicable => "No SA VAT",
+        _ => t.ToString()
+    };
+
     public static string Label(this ReceiptMethod m) => m switch
     {
         ReceiptMethod.Eft => "EFT",

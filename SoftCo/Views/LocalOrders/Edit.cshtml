@@ -57,17 +57,7 @@
 
         <hr class="sc-rule" />
 
-        <p class="sc-label">Projects</p>
-        <p class="sc-hint">Tick every project this order belongs to.</p>
-        <div class="sc-checks">
-            @foreach (var p in Model.AllProjects)
-            {
-                <label class="sc-check">
-                    <input type="checkbox" name="ProjectIds" value="@p.Id" checked="@(Model.ProjectIds.Contains(p.Id))" />
-                    <span>@p.Name</span>
-                </label>
-            }
-        </div>
+        @await Html.PartialAsync("_ProjectAllocation", Model)
 
         <hr class="sc-rule" />
 
@@ -89,6 +79,22 @@
                 <span asp-validation-for="InvoiceValueZar" class="sc-error"></span>
             </div>
         </div>
+            <div>
+                <label class="form-label" asp-for="VatTreatment"></label>
+                <select class="form-select" asp-for="VatTreatment">
+                    @foreach (SupplierVatTreatment t in Enum.GetValues<SupplierVatTreatment>())
+                    {
+                        <option value="@t" selected="@(Model.VatTreatment == t)">@t.Label()</option>
+                    }
+                </select>
+                @* Needed for gross profit. A local invoice usually includes VAT that Soft & Co
+                   reclaim, so the real cost is lower; an import carries no SA VAT at all. Left
+                   unrecorded, the full value is counted as cost and margin reads low. *@
+                <span class="sc-hint">
+                    Does the Rand value above include South African VAT? Until this is set, the whole
+                    amount counts as cost and gross profit is understated.
+                </span>
+            </div>
 
         <div style="margin-top:1rem">
             <label class="form-label" asp-for="Notes"></label>
@@ -102,4 +108,7 @@
     </form>
 </div>
 
-@section Scripts { <partial name="_ValidationScriptsPartial" /> }
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/project-allocation.js" asp-append-version="true"></script>
+}

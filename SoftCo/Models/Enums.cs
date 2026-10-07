@@ -257,3 +257,28 @@ public enum CreditNoteStatus
     Issued    = 1,
     Cancelled = 2
 }
+
+/// <summary>
+/// Whether a supplier's invoice value includes South African VAT.
+///
+/// <para><b>Unknown is 0 on purpose, and is not a placeholder to be tidied away.</b>
+/// <see cref="SupplierOrder.InvoiceValueZar"/> has carried no VAT semantics at all until now. For
+/// local orders it is almost certainly VAT-inclusive - a local invoice of R11,500 contains R1,500 of
+/// input VAT that Soft &amp; Co reclaim from SARS, so the true cost is R10,000. Imported orders carry
+/// no South African VAT whatsoever. The same column therefore means different things row to row, and
+/// feeding both into gross profit understates local margin by about 13% with no error anywhere.</para>
+///
+/// <para>The existing rows are labelled <see cref="Unknown"/> rather than guessed at. Dividing them
+/// by 1.15 would silently rewrite financial records on an assumption, and where a supplier was not
+/// VAT registered it would introduce an error that looks exactly like data. The gross-profit report
+/// counts these rows and says so on screen instead.</para>
+/// </summary>
+public enum SupplierVatTreatment
+{
+    Unknown   = 0,
+    Inclusive = 1,
+    Exclusive = 2,
+
+    /// <summary>No South African VAT applies - an import, or a supplier who is not registered.</summary>
+    NotApplicable = 3
+}

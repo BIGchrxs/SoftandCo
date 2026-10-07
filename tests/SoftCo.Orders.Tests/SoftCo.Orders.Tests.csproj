@@ -25,5 +25,6 @@
     <Compile Include="../../SoftCo/Services/Approvals/SubjectFingerprint.cs" Link="Approvals/SubjectFingerprint.cs" />
     <Compile Include="../../SoftCo/Services/Invoicing/InvoiceMath.cs" Link="Invoicing/InvoiceMath.cs" />
     <Compile Include="../../SoftCo/Services/Invoicing/ReceivableMath.cs" Link="Invoicing/ReceivableMath.cs" />
+    <Compile Include="../../SoftCo/Services/Reporting/GrossProfitMath.cs" Link="Reporting/GrossProfitMath.cs" />
   </ItemGroup>
 </Project>

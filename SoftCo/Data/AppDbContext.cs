@@ -236,6 +236,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         {
             e.HasKey(x => new { x.SupplierOrderId, x.ProjectId });
 
+            // A share outside 0..1 is nonsense, and the database says so. That an order's shares sum
+            // to 1 is a statement about a set of rows rather than about one, so it lives in the
+            // service - but this half can be enforced here and is.
+            e.ToTable(t => t.HasCheckConstraint(
+                "CK_OrderProjects_AllocationShare",
+                "\"AllocationShare\" >= 0 AND \"AllocationShare\" <= 1"));
+
             e.HasOne(x => x.SupplierOrder)
              .WithMany(o => o.OrderProjects)
              .HasForeignKey(x => x.SupplierOrderId)
