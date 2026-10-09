@@ -40,7 +40,22 @@ public static class Roles
     /// </summary>
     public const string FinancialDirector = "FinancialDirector";
 
-    public static readonly string[] All = [Admin, Finance, Procurement, Viewer, Staff, FinancialDirector];
+    /// <summary>
+    /// A director of Soft &amp; Co.
+    ///
+    /// <para>Permission-identical to <see cref="FinancialDirector"/> today: every financial ability
+    /// in the system, with user administration left to <see cref="Admin"/>. It exists as a separate
+    /// role because the two are different people - calling the company's director a "Financial
+    /// Director" would mislabel them in every audit row, approval decision and user list from here
+    /// on.</para>
+    ///
+    /// <para>The practical gain is a second approver. Nobody may approve their own submission - the
+    /// rule compares user ids - so with only one approver and one administrator, whoever raises a
+    /// thing must wait for the other. A director is a third person who can clear the queue.</para>
+    /// </summary>
+    public const string Director = "Director";
+
+    public static readonly string[] All = [Admin, Finance, Procurement, Viewer, Staff, FinancialDirector, Director];
 
     /// <summary>
     /// The roles the Users screen may hand out. A deliberate subset of <see cref="All"/>: Admin is
@@ -51,13 +66,14 @@ public static class Roles
     /// Any role posted from a form is checked against this list, so an arbitrary string - including
     /// "Admin" - cannot be assigned by editing the request.
     /// </summary>
-    public static readonly string[] Assignable = [Staff, FinancialDirector];
+    public static readonly string[] Assignable = [Staff, FinancialDirector, Director];
 
     /// <summary>How a role reads on screen.</summary>
     public static string Label(string role) => role switch
     {
         Admin => "Administrator",
         FinancialDirector => "Financial Director",
+        Director => "Director",
         Staff => "Staff",
         Finance => "Finance",
         Procurement => "Procurement",
@@ -74,18 +90,18 @@ public static class Roles
     /// makes the absence of one fail closed.
     /// </summary>
     public const string AnyRole = Admin + "," + Finance + "," + Procurement + "," + Viewer + "," + Staff
-                                 + "," + FinancialDirector;
+                                 + "," + FinancialDirector + "," + Director;
 
     /// <summary>Roles permitted to see money columns anywhere in the UI.</summary>
     public const string CanSeeValues = Admin + "," + Finance + "," + Procurement + "," + Staff
-                                       + "," + FinancialDirector;
+                                       + "," + FinancialDirector + "," + Director;
 
     /// <summary>
     /// Roles permitted to record or amend money: supplier payments, client receipts, and releasing
     /// an approved payment request.
     /// </summary>
     public const string CanRecordPayments = Admin + "," + Finance + "," + Staff
-                                            + "," + FinancialDirector;
+                                            + "," + FinancialDirector + "," + Director;
 
     /// <summary>
     /// Roles permitted to create or edit orders, suppliers, projects, clients and invoices.
@@ -101,19 +117,19 @@ public static class Roles
     /// are the only two accounts, and whoever raises a thing must wait for the other to approve it.</para>
     /// </summary>
     public const string CanEditOrders = Admin + "," + Procurement + "," + Finance + "," + Staff
-                                        + "," + FinancialDirector;
+                                        + "," + FinancialDirector + "," + Director;
 
     /// <summary>
     /// Roles permitted to approve or reject what has been submitted. Admin is included because
     /// somebody must be able to act when the Financial Director is away; every decision records who
     /// made it, so that is visible rather than silent.
     /// </summary>
-    public const string CanApprove = Admin + "," + FinancialDirector;
+    public const string CanApprove = Admin + "," + FinancialDirector + "," + Director;
 
     /// <summary>
     /// Roles permitted to see margin and gross profit. Narrower than <see cref="CanSeeValues"/> on
     /// purpose: what an order cost and what a client was charged are both visible to the people
     /// doing the work, but the difference between them is not.
     /// </summary>
-    public const string CanSeeMargin = Admin + "," + Finance + "," + FinancialDirector;
+    public const string CanSeeMargin = Admin + "," + Finance + "," + FinancialDirector + "," + Director;
 }

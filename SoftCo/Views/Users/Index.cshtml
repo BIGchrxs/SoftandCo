@@ -20,8 +20,10 @@
 
     <p class="sc-muted">
         Staff get the day-to-day work: orders, payments, documents and payment requests. The
-        Financial Director approves what staff raise &mdash; and only approves, so nobody can sign
-        off their own work. Administering users stays with administrators.
+        Financial Director and the Director have every financial ability, including approving what
+        staff raise. Nobody can approve their own submission, whatever their access level, so each
+        approver you add is another person who can clear the queue. Administering users stays with
+        administrators.
     </p>
 
     <div class="sc-table-wrap">
@@ -68,18 +70,27 @@
                             @* An administrator must not be able to switch off the account they are
                                using - the server refuses it too, this just avoids offering it. *@
                             @* Administrators are not changed from here, and nobody changes their
-                               own access level - the server refuses both regardless. *@
+                               own access level - the server refuses both regardless.
+
+                               A selector rather than the two-way "Make X" toggle this used to be.
+                               That toggle assumed only two assignable roles existed: with a third it
+                               could not reach Director at all, and a Director's row would have
+                               offered to make them a Financial Director. *@
                             @if (!u.IsSelf && !u.Roles.Contains(SoftCo.Data.Roles.Admin))
                             {
-                                var next = u.Roles.Contains(SoftCo.Data.Roles.FinancialDirector)
-                                    ? SoftCo.Data.Roles.Staff
-                                    : SoftCo.Data.Roles.FinancialDirector;
+                                var current = u.Roles.FirstOrDefault(r => SoftCo.Data.Roles.Assignable.Contains(r));
 
-                                <form method="post" asp-action="SetRole" class="sc-inline-form">
+                                <form method="post" asp-action="SetRole" class="sc-inline-form sc-role-form">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@u.Id" />
-                                    <input type="hidden" name="role" value="@next" />
-                                    <button type="submit" class="sc-linkish">Make @SoftCo.Data.Roles.Label(next)</button>
+                                    <label class="visually-hidden" for="role-@u.Id">Access level for @u.Email</label>
+                                    <select class="form-select" id="role-@u.Id" name="role">
+                                        @foreach (var r in SoftCo.Data.Roles.Assignable)
+                                        {
+                                            <option value="@r" selected="@(current == r)">@SoftCo.Data.Roles.Label(r)</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="sc-linkish">Apply</button>
                                 </form>
                             }
 

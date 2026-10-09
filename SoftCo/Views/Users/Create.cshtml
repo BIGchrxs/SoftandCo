@@ -39,8 +39,11 @@
                     }
                 </select>
                 <span class="sc-hint">
-                    Staff do the day-to-day work and raise purchase orders. The Financial Director
-                    approves them &mdash; and only approves, so nobody can sign off their own work.
+                    Staff do the day-to-day work and raise purchase orders, invoices and payment
+                    requests. The Financial Director and the Director can do all of that
+                    <em>and</em> approve it &mdash; but never their own submissions, so adding an
+                    approver means work can be cleared without waiting on one person. Only
+                    administrators manage user accounts.
                 </span>
                 <span asp-validation-for="Role" class="sc-error"></span>
             </div>

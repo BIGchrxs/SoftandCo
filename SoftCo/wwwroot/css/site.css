@@ -469,6 +469,15 @@ a:hover {
     padding: 0.5rem 0.75rem;
 }
 
+/* A select paints a chevron inside its own right-hand padding. The shared rule above sets 0.75rem
+   on all four sides, which overrides the room Bootstrap leaves for that arrow, so the text runs
+   underneath it. Invisible on a full-width select, where there is slack before the text reaches the
+   edge - it only shows once a select shrinks to fit its content, which is why the inline role
+   selector on the users list is where it surfaced. */
+.form-select {
+    padding-right: 2.25rem;
+}
+
 .form-control:focus,
 .form-select:focus {
     background-color: var(--sc-white);
@@ -1224,4 +1233,18 @@ a:hover {
     opacity: 1;
     border-color: var(--sc-accent-strong);
     color: var(--sc-accent-strong);
+}
+
+/* The access-level selector on a user row. Inline so it sits in the row-actions flow beside Reset
+   password and Deactivate, rather than breaking the row onto a second line. */
+.sc-role-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.sc-role-form .form-select {
+    width: auto;
+    padding-block: 0.25rem;
+    font-size: 0.8rem;
 }
