@@ -77,29 +77,28 @@ public sealed class ApprovalNotifier : IApprovalNotifier
     public async Task NotifyApproversAsync(Approval approval, SupplierOrder order, string? link,
                                            CancellationToken ct = default)
     {
-        var approvers = await ActiveApproversAsync(ct);
+        var approvers = await ActiveApproversAsync(approval.RequestedById, ct);
 
-        if (approvers.Count == 0)
+        if (approvers.Recipients.Count == 0)
         {
             // Not an error that should lose the submission, but it does mean nobody has been told.
             // Recorded so the screen can say so rather than implying the request is on its way.
             approval.NotificationSent = false;
-            approval.NotificationError =
-                "No active Financial Director account to notify. The request is in the approval queue.";
+            approval.NotificationError = NobodyToNotify("request", approvers.OnlySubmitterCould);
             return;
         }
 
         var subject = $"Approval needed - {order.PoNumber} - R {approval.AmountZarAtRequest:N2}";
         var attachments = await AttachmentsAsync(order.Id, ct);
 
-        foreach (var approver in approvers)
+        foreach (var approver in approvers.Recipients)
         {
             var body = ApproverBody(approval, order, approver, link, attachments.Count > 0);
             await SendAsync(approval, new EmailMessage(approver.Email!, DisplayName(approver),
                                                        subject, body, attachments), ct);
         }
 
-        approval.NotifiedTo = string.Join(", ", approvers.Select(a => a.Email));
+        approval.NotifiedTo = string.Join(", ", approvers.Recipients.Select(a => a.Email));
     }
 
     public async Task NotifySubmitterAsync(Approval approval, SupplierOrder order, string? link,
@@ -136,20 +135,19 @@ public sealed class ApprovalNotifier : IApprovalNotifier
     public async Task NotifyPaymentApproversAsync(Approval approval, PaymentRequest request,
                                                   string? link, CancellationToken ct = default)
     {
-        var approvers = await ActiveApproversAsync(ct);
+        var approvers = await ActiveApproversAsync(approval.RequestedById, ct);
 
-        if (approvers.Count == 0)
+        if (approvers.Recipients.Count == 0)
         {
             approval.NotificationSent = false;
-            approval.NotificationError =
-                "No active Financial Director account to notify. The request is in the approval queue.";
+            approval.NotificationError = NobodyToNotify("payment", approvers.OnlySubmitterCould);
             return;
         }
 
         var order = request.SupplierOrder;
         var subject = $"Payment release needed - {order?.PoNumber} - R {approval.AmountZarAtRequest:N2}";
 
-        foreach (var approver in approvers)
+        foreach (var approver in approvers.Recipients)
         {
             var body = $"""
                 Hi {DisplayName(approver)},
@@ -174,7 +172,7 @@ public sealed class ApprovalNotifier : IApprovalNotifier
                                                        subject, body, []), ct);
         }
 
-        approval.NotifiedTo = string.Join(", ", approvers.Select(a => a.Email));
+        approval.NotifiedTo = string.Join(", ", approvers.Recipients.Select(a => a.Email));
     }
 
     public async Task NotifyPaymentSubmitterAsync(Approval approval, PaymentRequest request,
@@ -219,19 +217,18 @@ public sealed class ApprovalNotifier : IApprovalNotifier
 
         if (invoice is null) return;
 
-        var approvers = await ActiveApproversAsync(ct);
+        var approvers = await ActiveApproversAsync(approval.RequestedById, ct);
 
-        if (approvers.Count == 0)
+        if (approvers.Recipients.Count == 0)
         {
             approval.NotificationSent = false;
-            approval.NotificationError =
-                "No active Financial Director account to notify. The invoice is in the approval queue.";
+            approval.NotificationError = NobodyToNotify("invoice", approvers.OnlySubmitterCould);
             return;
         }
 
         var subject = $"Invoice approval needed - {invoice.Client?.Name} - R {invoice.GrandTotal:N2}";
 
-        foreach (var approver in approvers)
+        foreach (var approver in approvers.Recipients)
         {
             var body = $"""
                 Hi {DisplayName(approver)},
@@ -257,18 +254,60 @@ public sealed class ApprovalNotifier : IApprovalNotifier
                                                        subject, body, []), ct);
         }
 
-        approval.NotifiedTo = string.Join(", ", approvers.Select(a => a.Email));
+        approval.NotifiedTo = string.Join(", ", approvers.Recipients.Select(a => a.Email));
     }
 
-    private async Task<List<ApplicationUser>> ActiveApproversAsync(CancellationToken ct)
-    {
-        var inRole = await _users.GetUsersInRoleAsync(Roles.FinancialDirector);
+    /// <summary>
+    /// Who to email about a pending approval, and whether the list came out empty only because the
+    /// submitter was taken out of it.
+    /// </summary>
+    private sealed record ApproverSet(List<ApplicationUser> Recipients, bool OnlySubmitterCould);
 
-        return inRole
+    /// <summary>
+    /// Every active account that may actually decide this approval.
+    ///
+    /// Read from <see cref="Roles.CanApprove"/> rather than naming one role, which is the bug this
+    /// replaced: it asked for Financial Directors only, so the Director and Admin accounts that
+    /// Roles.CanApprove has always let decide were never told anything was waiting.
+    ///
+    /// The submitter is left out because <c>ApprovalRules.CanDecide</c> refuses a decision by the
+    /// person who asked for it - "please approve this" to the requester is an email nobody can act on.
+    /// </summary>
+    private async Task<ApproverSet> ActiveApproversAsync(string? requestedById, CancellationToken ct)
+    {
+        var roles = Roles.CanApprove.Split(
+            ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        // Keyed by id: one account may hold more than one of these roles and must not be mailed twice.
+        var byId = new Dictionary<string, ApplicationUser>(StringComparer.Ordinal);
+
+        foreach (var role in roles)
+        {
+            foreach (var user in await _users.GetUsersInRoleAsync(role))
+                byId[user.Id] = user;
+        }
+
+        var eligible = byId.Values
             .Where(u => u.IsActive && !string.IsNullOrWhiteSpace(u.Email))
             .OrderBy(u => u.Email)
             .ToList();
+
+        var recipients = eligible
+            .Where(u => !string.Equals(u.Id, requestedById, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return new ApproverSet(recipients, recipients.Count == 0 && eligible.Count > 0);
     }
+
+    /// <summary>
+    /// Why nobody was emailed. An approval raised by the only approver in the business is a
+    /// different situation from having no approver at all, and the screen should say which.
+    /// </summary>
+    private static string NobodyToNotify(string subject, bool onlySubmitterCould) =>
+        onlySubmitterCould
+            ? $"You are the only account with approval rights, and nobody may approve their own " +
+              $"request. The {subject} is in the queue until another approver is set up."
+            : $"No active account with approval rights to notify. The {subject} is in the approval queue.";
 
     private async Task<List<EmailAttachment>> AttachmentsAsync(int orderId, CancellationToken ct)
     {

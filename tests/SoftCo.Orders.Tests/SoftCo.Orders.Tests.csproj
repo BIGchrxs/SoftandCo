@@ -26,5 +26,9 @@
     <Compile Include="../../SoftCo/Services/Invoicing/InvoiceMath.cs" Link="Invoicing/InvoiceMath.cs" />
     <Compile Include="../../SoftCo/Services/Invoicing/ReceivableMath.cs" Link="Invoicing/ReceivableMath.cs" />
     <Compile Include="../../SoftCo/Services/Reporting/GrossProfitMath.cs" Link="Reporting/GrossProfitMath.cs" />
+
+    <!-- Plain constants, no framework reference. The role lists gate every money action and are
+         read by the authorization attributes, the view helpers and the approval notifier alike. -->
+    <Compile Include="../../SoftCo/Data/Roles.cs" Link="Data/Roles.cs" />
   </ItemGroup>
 </Project>
