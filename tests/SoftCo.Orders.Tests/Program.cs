@@ -1,4 +1,5 @@
 using System.Text;
+using SoftCo.Data;
 using SoftCo.Models;
 using SoftCo.Services.Approvals;
 using SoftCo.Services.Invoicing;
@@ -612,6 +613,40 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
     Check(GrossProfitMath.MarginPercent(0m, 0m) is null, "No revenue means no margin, not 0%");
     Check(GrossProfitMath.MarginPercent(0m, -5000m) is null, "Cost with no revenue still has no margin");
     Check(GrossProfitMath.MarginPercent(3m, 1m) == 33.33m, "Margin is rounded to two places");
+}
+
+
+// --- Who may approve ---------------------------------------------------------------------
+// The notifier resolves its recipients by splitting this list, so a role that may approve but is
+// not on it is an approver nobody tells. That was the Director's position until this was fixed.
+{
+    static string[] Split(string roleList) =>
+        roleList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    var approvers = Split(Roles.CanApprove);
+
+    Check(approvers.Contains(Roles.FinancialDirector), "The Financial Director may approve");
+    Check(approvers.Contains(Roles.Director), "The Director may approve - the role exists to be a second approver");
+    Check(approvers.Contains(Roles.Admin), "Admin may approve, so somebody can act when the FD is away");
+    Check(approvers.Length == 3, "and nobody else may");
+
+    // A blank or padded entry would be split into a role name that matches no account, so the
+    // notifier would silently resolve nobody for it.
+    Check(approvers.All(r => r.Length > 0 && r.Trim() == r), "No empty or padded entries in the list");
+    Check(approvers.Distinct().Count() == approvers.Length, "No role is listed twice");
+
+    // Every gated role has to be a role that actually gets created at startup.
+    foreach (var list in new[] { Roles.CanApprove, Roles.CanEditOrders, Roles.CanRecordPayments,
+                                 Roles.CanSeeValues, Roles.CanSeeMargin, Roles.AnyRole })
+    {
+        Check(Split(list).All(Roles.All.Contains), "Every gated role is one SeedData creates");
+    }
+
+    // Approving is narrower than editing: the people who raise purchase orders are not the people
+    // who sign them off, except where a role holds both and CanDecide stops it mattering.
+    Check(Split(Roles.CanEditOrders).Length > approvers.Length, "More people may raise than may approve");
+    Check(!Split(Roles.CanApprove).Contains(Roles.Viewer), "A viewer may not approve");
+    Check(!Split(Roles.CanApprove).Contains(Roles.Staff), "Standard staff may not approve");
 }
 
 Console.WriteLine($"All {passed} checks passed.");
