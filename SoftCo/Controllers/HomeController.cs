@@ -25,3 +25,4 @@ public class HomeController : Controller
     public IActionResult Error()
         => View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
 }
+//_________________________...oooOOO END OF FILE OOOooo..._________________________

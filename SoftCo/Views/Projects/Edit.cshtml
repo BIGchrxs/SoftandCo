@@ -14,7 +14,11 @@
             <div>
                 <label class="form-label" asp-for="Code"></label>
                 <input class="form-control" asp-for="Code" placeholder="FAIRMONT" />
-                <span class="sc-hint">Stored in capitals, matching the rest of the register.</span>
+                <span class="sc-hint">
+                    @(isNew
+                        ? "Generated automatically. Change it if this project needs a code of its own."
+                        : "Stored in capitals, matching the rest of the register.")
+                </span>
                 <span asp-validation-for="Code" class="sc-error"></span>
             </div>
             <div>

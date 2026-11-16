@@ -38,3 +38,4 @@ public static class RoleChecks
         roleList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(user.IsInRole);
 }
+//_________________________...oooOOO END OF FILE OOOooo..._________________________

@@ -62,3 +62,4 @@ public static class SeedData
         await userManager.AddToRoleAsync(admin, Roles.Admin);
     }
 }
+//_________________________...oooOOO END OF FILE OOOooo..._________________________

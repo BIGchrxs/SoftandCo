@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SoftCo.Data;
 using SoftCo.Models;
+using SoftCo.Services.Numbering;
 using SoftCo.Services.Reporting;
 using SoftCo.ViewModels;
 
@@ -12,8 +13,13 @@ namespace SoftCo.Controllers;
 public class ProjectsController : Controller
 {
     private readonly AppDbContext _db;
+    private readonly IDocumentNumberGenerator _numbers;
 
-    public ProjectsController(AppDbContext db) => _db = db;
+    public ProjectsController(AppDbContext db, IDocumentNumberGenerator numbers)
+    {
+        _db = db;
+        _numbers = numbers;
+    }
 
     public async Task<IActionResult> Index()
     {
@@ -49,13 +55,30 @@ public class ProjectsController : Controller
     }
 
     [Authorize(Roles = Roles.CanEditOrders)]
-    public async Task<IActionResult> Create() =>
-        View("Edit", new ProjectEditViewModel { Clients = await ClientOptionsAsync() });
+    public async Task<IActionResult> Create(CancellationToken ct)
+    {
+        // Allocated when the form opens, so the code is visible and can be overridden before
+        // saving rather than appearing afterwards. Abandoning the form therefore skips a number -
+        // which is fine here and already true of purchase orders: a project code has no external
+        // audience expecting an unbroken series, so a gap costs nothing.
+        var code = await _numbers.NextAsync(DocumentNumberKind.Project, ct);
+
+        return View("Edit", new ProjectEditViewModel
+        {
+            Code = code,
+            Clients = await ClientOptionsAsync()
+        });
+    }
 
     [HttpPost, ValidateAntiForgeryToken]
     [Authorize(Roles = Roles.CanEditOrders)]
-    public async Task<IActionResult> Create(ProjectEditViewModel vm)
+    public async Task<IActionResult> Create(ProjectEditViewModel vm, CancellationToken ct)
     {
+        // A safety net for the form arriving without one - a browser that did not load the field,
+        // or somebody clearing it. The code is required, and generating beats refusing.
+        if (string.IsNullOrWhiteSpace(vm.Code))
+            vm.Code = await _numbers.NextAsync(DocumentNumberKind.Project, ct);
+
         await ValidateAsync(vm);
 
         if (!ModelState.IsValid)
@@ -165,3 +188,4 @@ public class ProjectsController : Controller
                 "That client is inactive. Reactivate them before starting new work.");
     }
 }
+//_________________________...oooOOO END OF FILE OOOooo..._________________________

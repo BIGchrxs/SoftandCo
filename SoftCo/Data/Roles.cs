@@ -133,3 +133,4 @@ public static class Roles
     /// </summary>
     public const string CanSeeMargin = Admin + "," + Finance + "," + FinancialDirector + "," + Director;
 }
+//_________________________...oooOOO END OF FILE OOOooo..._________________________

@@ -31,6 +31,10 @@ Check(PoNumberFormat.Format(2026, 123456) == "PO-2026-123456", "Six figures stil
     Check(Fmt(CN, 2026, 1) == "CN-2026-0001", "First credit note of the year");
     Check(Fmt(PO, 2026, 1) == "PO-2026-0001", "Purchase orders keep their existing shape");
 
+    var PRJ = SoftCo.Services.Numbering.DocumentNumberKind.Project;
+    Check(Fmt(PRJ, 2026, 1) == "PRJ-2026-0001", "First project of the year");
+    Check(Fmt(PRJ, 2026, 20) == "PRJ-2026-0020", "Project numbering continues past the backfilled register");
+
     Check(Fmt(INV, 2027, 1) == "INV-2027-0001", "Year rolls over in the prefix");
     Check(Fmt(CN, 2026, 10000) == "CN-2026-10000", "Beyond four digits keeps growing");
     Check(Fmt(INV, 2026, 123456) == "INV-2026-123456", "Six figures still render in full");

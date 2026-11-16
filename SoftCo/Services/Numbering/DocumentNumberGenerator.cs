@@ -34,7 +34,8 @@ public sealed class DocumentNumberGenerator : IDocumentNumberGenerator
         {
             [DocumentNumberKind.PurchaseOrder]   = "public.po_number_seq",
             [DocumentNumberKind.CustomerInvoice] = "public.invoice_number_seq",
-            [DocumentNumberKind.CreditNote]      = "public.credit_note_number_seq"
+            [DocumentNumberKind.CreditNote]      = "public.credit_note_number_seq",
+            [DocumentNumberKind.Project]         = "public.project_number_seq"
         };
 
     private readonly AppDbContext _db;

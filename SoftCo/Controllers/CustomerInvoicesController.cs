@@ -426,3 +426,4 @@ public class CustomerInvoicesController : Controller
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }
+//_________________________...oooOOO END OF FILE OOOooo..._________________________

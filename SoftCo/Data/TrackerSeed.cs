@@ -12,6 +12,10 @@ namespace SoftCo.Data;
 /// the Rand column divided by the foreign column gives ~2.5 for the CNY suppliers and ~17.0 for
 /// the USD ones, which is how each row's currency was identified.
 /// </summary>
+/// 
+
+//THE DATA IS TAKEN FROM THE SPREADSHEET AS OF 2024-06-13, AND WILL NOT BE UPDATED AGAIN. IT IS ONLY FOR DEVELOPMENT USE.
+
 public static class TrackerSeed
 {
     private record Row(

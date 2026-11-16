@@ -12,7 +12,14 @@ public enum DocumentNumberKind
 {
     PurchaseOrder   = 0,
     CustomerInvoice = 1,
-    CreditNote      = 2
+    CreditNote      = 2,
+
+    /// <summary>
+    /// A project's internal reference. Not a document Soft &amp; Co issue to anyone, but it is
+    /// allocated the same way and from its own sequence, so it belongs with the others rather than
+    /// in a second numbering mechanism.
+    /// </summary>
+    Project         = 3
 }
 
 /// <summary>
@@ -32,6 +39,7 @@ public static class DocumentNumberFormat
         DocumentNumberKind.PurchaseOrder   => "PO",
         DocumentNumberKind.CustomerInvoice => "INV",
         DocumentNumberKind.CreditNote      => "CN",
+        DocumentNumberKind.Project         => "PRJ",
         _ => throw new ArgumentOutOfRangeException(
                  nameof(kind), kind, "No prefix is defined for this document kind.")
     };
