@@ -177,6 +177,56 @@ public static class ApprovalRules
     }
 
     /// <summary>
+    /// Whether a credit note may be put to the Financial Director.
+    ///
+    /// The reason is checked here rather than only at the form, because it is the only thing the
+    /// approver has to go on: a credit note with no stated reason is a request to reduce an invoice
+    /// for reasons unrecorded.
+    /// </summary>
+    public static RuleResult CanSubmitCreditNote(CreditNoteStatus status, int lineCount, string? reason)
+    {
+        if (status == CreditNoteStatus.PendingApproval)
+            return RuleResult.Refuse("This credit note is already waiting for approval.");
+
+        if (status == CreditNoteStatus.Issued)
+            return RuleResult.Refuse("This credit note has already been issued.");
+
+        if (status == CreditNoteStatus.Cancelled)
+            return RuleResult.Refuse("This credit note has been cancelled.");
+
+        if (lineCount == 0)
+            return RuleResult.Refuse("Add at least one line before sending this for approval.");
+
+        if ((reason ?? string.Empty).Trim().Length < MinimumRejectionReasonLength)
+            return RuleResult.Refuse(
+                $"Say why this is being credited, in at least {MinimumRejectionReasonLength} characters.");
+
+        return RuleResult.Allowed;
+    }
+
+    /// <summary>
+    /// Whether an approved credit note may be issued.
+    ///
+    /// Approval and issue are the same act for a credit note - the Financial Director's decision
+    /// is what issues it - so this guards the transition rather than a separate staff step. The
+    /// amount is checked separately by <c>ReceivableMath.CanCredit</c> against the headroom at that
+    /// moment, which may have moved since the request was raised.
+    /// </summary>
+    public static RuleResult CanIssueCreditNote(CreditNoteStatus status)
+    {
+        if (status == CreditNoteStatus.Issued)
+            return RuleResult.Refuse("This credit note has already been issued.");
+
+        if (status == CreditNoteStatus.Cancelled)
+            return RuleResult.Refuse("This credit note has been cancelled.");
+
+        if (status != CreditNoteStatus.PendingApproval)
+            return RuleResult.Refuse("This credit note has not been sent for approval.");
+
+        return RuleResult.Allowed;
+    }
+
+    /// <summary>
     /// Whether an invoice may still be edited. Issued invoices are tax documents: the VAT Act
     /// requires a credit note to reverse one, and letting staff edit them is precisely how this
     /// system would quietly become the spreadsheet it replaced.

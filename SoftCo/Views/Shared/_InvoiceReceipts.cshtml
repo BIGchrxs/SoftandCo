@@ -6,6 +6,13 @@
     var receipts = Model.Receipts.OrderByDescending(r => r.ReceivedDate).ThenByDescending(r => r.Id).ToList();
     var credits = Model.CreditNotes.OrderByDescending(c => c.IssueDate).ThenByDescending(c => c.Id).ToList();
     var headroom = Math.Max(0m, Model.GrandTotal - Model.CreditedTotal);
+
+    // Pending credits are deliberately not in the headroom - nothing is credited until approved -
+    // but they are shown, because two credits that each fit alone may not fit together, and the
+    // second would be refused at approval rather than when it was raised.
+    var pendingCredit = Model.CreditNotes
+        .Where(c => c.Status == CreditNoteStatus.PendingApproval)
+        .Sum(c => c.GrandTotal);
 }
 
 <div class="sc-card">
@@ -86,10 +93,24 @@
             @foreach (var c in credits)
             {
                 <li>
-                    <span class="sc-history-when">@(c.IssueDate?.ToString("dd MMM yyyy") ?? "draft")</span>
+                    <span class="sc-history-when">@(c.IssueDate?.ToString("dd MMM yyyy") ?? "—")</span>
                     <strong>@(c.CreditNoteNumber ?? c.Status.Label())</strong>
                     <span class="sc-muted">· R @c.GrandTotal.ToString("N2") · @(c.IssuedByName ?? c.CreatedById ?? "unknown")</span>
                     <span class="sc-cell-sub">@c.Reason</span>
+
+                    @* Only an issued credit note has reduced the balance. One waiting on the FD, or
+                       refused, is listed so staff can see what happened to it - and so nobody
+                       raises the same credit twice because the first one looked lost. *@
+                    @if (c.Status == CreditNoteStatus.PendingApproval)
+                    {
+                        <span class="sc-cell-sub">Awaiting approval &mdash; nothing credited yet.</span>
+                    }
+                    else if (c.Status == CreditNoteStatus.Rejected)
+                    {
+                        <span class="sc-cell-sub">
+                            Refused@(c.LatestDecision?.DecisionReason is { Length: > 0 } why ? $": {why}" : ".")
+                        </span>
+                    }
                 </li>
             }
         </ul>
@@ -142,7 +163,16 @@
             <p class="sc-hint">
                 An issued invoice cannot be changed. A credit note reverses part or all of it, and is
                 what the VAT Act requires. At most R @headroom.ToString("N2") can still be credited.
+                It goes to the Financial Director for approval &mdash; nothing is credited until then.
             </p>
+            @if (pendingCredit > 0)
+            {
+                <p class="sc-hint">
+                    R @pendingCredit.ToString("N2") is already waiting for approval on this invoice.
+                    That is not counted above, so two credits that each fit on their own may not fit
+                    together &mdash; the second would be refused when it reaches the approver.
+                </p>
+            }
             <form method="post" asp-controller="CustomerInvoices" asp-action="CreditNote" asp-route-id="@Model.Id"
                   class="sc-form-grid">
                 @Html.AntiForgeryToken()
@@ -172,7 +202,7 @@
                     <span class="sc-hint">Printed on the credit note. An auditor will ask.</span>
                 </div>
                 <div class="sc-upload-action">
-                    <button type="submit" class="btn btn-secondary">Issue credit note</button>
+                    <button type="submit" class="btn btn-secondary">Send for approval</button>
                 </div>
             </form>
         </details>

@@ -66,12 +66,28 @@ public class CreditNote
 
     public ICollection<CreditNoteLine> Lines { get; set; } = new List<CreditNoteLine>();
 
+    public ICollection<Approval> Approvals { get; set; } = new List<Approval>();
+
     /// <summary>
     /// True once this is a tax document in its own right. Only an issued credit note reduces what
-    /// the client owes; a draft is somebody thinking aloud.
+    /// the client owes; nothing else here credits a cent.
     /// </summary>
     [NotMapped]
     public bool IsIssued => Status == CreditNoteStatus.Issued;
+
+    /// <summary>The newest request still awaiting a decision, if any.</summary>
+    [NotMapped]
+    public Approval? OpenApproval =>
+        Approvals.Where(a => a.Status == ApprovalStatus.Pending)
+                 .OrderByDescending(a => a.RequestedAt)
+                 .FirstOrDefault();
+
+    /// <summary>The most recent decision, for showing who allowed this credit and why.</summary>
+    [NotMapped]
+    public Approval? LatestDecision =>
+        Approvals.Where(a => a.DecidedAt != null)
+                 .OrderByDescending(a => a.DecidedAt)
+                 .FirstOrDefault();
 }
 
 /// <summary>

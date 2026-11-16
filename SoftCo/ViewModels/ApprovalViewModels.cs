@@ -1,4 +1,5 @@
 using SoftCo.Models;
+using SoftCo.Services.Invoicing;
 
 namespace SoftCo.ViewModels;
 
@@ -37,6 +38,9 @@ public class ApprovalRowViewModel
     /// </summary>
     public CustomerInvoiceStatus? InvoiceStatus { get; set; }
 
+    /// <summary>Where the credit note has got to, for credit-note approvals.</summary>
+    public CreditNoteStatus? CreditNoteStatus { get; set; }
+
     /// <summary>
     /// How long this has been waiting. Shown because the cost of this system is somebody's time,
     /// and a request sitting for a week is the failure it is meant to prevent.
@@ -53,10 +57,25 @@ public class ApprovalReviewViewModel
     /// <summary>Null for a client invoice, which has no supplier order behind it.</summary>
     public SupplierOrder? Order { get; set; }
 
-    /// <summary>Set only for a client invoice.</summary>
+    /// <summary>
+    /// Set for a client invoice, and also for a credit note - there the invoice is the thing being
+    /// reduced, and the approver has to see what was charged to judge the credit.
+    /// </summary>
     public CustomerInvoice? Invoice { get; set; }
 
     public bool IsInvoice => Approval.Kind == ApprovalKind.CustomerInvoice;
+
+    /// <summary>Set only for a credit note.</summary>
+    public CreditNote? CreditNote { get; set; }
+
+    public bool IsCreditNote => Approval.Kind == ApprovalKind.CreditNote;
+
+    /// <summary>
+    /// What could still be credited against the invoice, counting only issued notes. The figure the
+    /// decision turns on: a credit inside the headroom is a correction, one beyond it is not.
+    /// </summary>
+    public decimal CreditHeadroom =>
+        Invoice is null ? 0m : ReceivableMath.CreditHeadroom(Invoice.GrandTotal, Invoice.CreditedTotal);
 
     /// <summary>
     /// Set only for a payment release. The order is still carried, because the decision is about

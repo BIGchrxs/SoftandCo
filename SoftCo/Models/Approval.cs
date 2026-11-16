@@ -47,6 +47,13 @@ public class Approval
     public int? CustomerInvoiceId { get; set; }
     public CustomerInvoice? CustomerInvoice { get; set; }
 
+    /// <summary>
+    /// The credit note itself, not the invoice it reverses - an invoice may be credited more than
+    /// once, so the invoice could not say which credit is being decided.
+    /// </summary>
+    public int? CreditNoteId { get; set; }
+    public CreditNote? CreditNote { get; set; }
+
     // --- What was being approved -------------------------------------------------------------
 
     /// <summary>
