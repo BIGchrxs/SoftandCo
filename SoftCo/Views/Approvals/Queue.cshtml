@@ -75,6 +75,12 @@
                         {
                             <span class="sc-cell-sub">Invoice: @invoiceStatus.Label()</span>
                         }
+                        else if (r.CreditNoteStatus is CreditNoteStatus creditStatus && !pendingView)
+                        {
+                            @* A credit note needs no second step - approving issued it - so this
+                               confirms the credit happened rather than flagging an action. *@
+                            <span class="sc-cell-sub">Credit note: @creditStatus.Label()</span>
+                        }
                     </td>
                     <td class="sc-muted">@r.Kind.Label()</td>
                     <td>@r.SupplierName</td>

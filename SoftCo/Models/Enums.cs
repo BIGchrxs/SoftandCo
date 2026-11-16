@@ -187,7 +187,7 @@ public enum PoApprovalStatus
 }
 
 /// <summary>
-/// What is being approved. One approval table serves all three rather than three near-identical
+/// What is being approved. One approval table serves all four rather than four near-identical
 /// tables, so the Financial Director's queue is one query instead of a UNION and the rules about
 /// who may decide are written once.
 /// </summary>
@@ -195,7 +195,14 @@ public enum ApprovalKind
 {
     PurchaseOrder   = 0,
     PaymentRelease  = 1,
-    CustomerInvoice = 2
+    CustomerInvoice = 2,
+
+    /// <summary>
+    /// Money given back to a client. Approved last because it was missed: a credit note reverses a
+    /// tax invoice and can take it to nil, which is the largest single effect anyone with edit
+    /// rights could have on what is owed to the business.
+    /// </summary>
+    CreditNote      = 3
 }
 
 /// <summary>
@@ -248,14 +255,18 @@ public enum ReceiptMethod
 /// <summary>
 /// Where a credit note has got to. Draft is 0, as everywhere else.
 ///
-/// Only an Issued credit note reduces what a client owes - a draft is somebody thinking aloud, and
-/// counting it would understate the receivable.
+/// Only an Issued credit note reduces what a client owes - nothing else here credits a cent, so a
+/// note waiting on the Financial Director leaves the receivable exactly as it was.
+///
+/// The later values are appended, never renumbered: they are stored as integers.
 /// </summary>
 public enum CreditNoteStatus
 {
-    Draft     = 0,
-    Issued    = 1,
-    Cancelled = 2
+    Draft            = 0,
+    Issued           = 1,
+    Cancelled        = 2,
+    PendingApproval  = 3,
+    Rejected         = 4
 }
 
 /// <summary>

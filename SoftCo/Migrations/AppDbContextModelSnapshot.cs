@@ -249,6 +249,9 @@ namespace SoftCo.Migrations
                     b.Property<decimal>("AmountZarAtRequest")
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int?>("CreditNoteId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("CustomerInvoiceId")
                         .HasColumnType("integer");
 
@@ -314,6 +317,8 @@ namespace SoftCo.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreditNoteId");
+
                     b.HasIndex("CustomerInvoiceId");
 
                     b.HasIndex("PaymentRequestId");
@@ -324,7 +329,7 @@ namespace SoftCo.Migrations
 
                     b.ToTable("Approvals", t =>
                         {
-                            t.HasCheckConstraint("CK_Approvals_OneSubject", "num_nonnulls(\"SupplierOrderId\", \"PaymentRequestId\", \"CustomerInvoiceId\") = 1");
+                            t.HasCheckConstraint("CK_Approvals_OneSubject", "num_nonnulls(\"SupplierOrderId\", \"PaymentRequestId\", \"CustomerInvoiceId\", \"CreditNoteId\") = 1");
                         });
                 });
 
@@ -1315,6 +1320,11 @@ namespace SoftCo.Migrations
 
             modelBuilder.Entity("SoftCo.Models.Approval", b =>
                 {
+                    b.HasOne("SoftCo.Models.CreditNote", "CreditNote")
+                        .WithMany("Approvals")
+                        .HasForeignKey("CreditNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SoftCo.Models.CustomerInvoice", "CustomerInvoice")
                         .WithMany("Approvals")
                         .HasForeignKey("CustomerInvoiceId")
@@ -1329,6 +1339,8 @@ namespace SoftCo.Migrations
                         .WithMany("Approvals")
                         .HasForeignKey("SupplierOrderId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreditNote");
 
                     b.Navigation("CustomerInvoice");
 
@@ -1487,6 +1499,8 @@ namespace SoftCo.Migrations
 
             modelBuilder.Entity("SoftCo.Models.CreditNote", b =>
                 {
+                    b.Navigation("Approvals");
+
                     b.Navigation("Lines");
                 });
 

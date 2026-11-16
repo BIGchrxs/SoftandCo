@@ -23,8 +23,29 @@ public interface IReceivableService
         int invoiceId, string reason, IReadOnlyList<InvoiceLineInput> lines, bool pricesEnteredInclusive,
         Actor actor, CancellationToken ct = default);
 
-    /// <summary>Issues a credit note: allocates its number and reduces what the client owes.</summary>
-    Task<RuleResult> IssueCreditNoteAsync(int creditNoteId, Actor actor, CancellationToken ct = default);
+    // There is deliberately no IssueCreditNoteAsync. A credit note is issued by being approved and
+    // in no other way, so there is no method anyone can reach that credits an invoice unsupervised.
+
+    /// <summary>
+    /// Puts a credit note to the Financial Director. Credits nothing by itself.
+    /// </summary>
+    Task<RuleResult> SubmitCreditNoteAsync(int creditNoteId, Actor actor, string? note,
+                                           CancellationToken ct = default);
+
+    /// <summary>
+    /// Approves a credit note, which issues it in the same breath - the decision is the
+    /// authorisation, and there is no second step for staff to forget.
+    /// </summary>
+    Task<RuleResult> ApproveCreditNoteAsync(int approvalId, Actor actor, string? note,
+                                            CancellationToken ct = default);
+
+    /// <summary>Refuses a credit note. Nothing is credited and the reason is kept against it.</summary>
+    Task<RuleResult> RejectCreditNoteAsync(int approvalId, Actor actor, string reason,
+                                           CancellationToken ct = default);
+
+    /// <summary>Takes back a request before it is decided, cancelling the credit note with it.</summary>
+    Task<RuleResult> WithdrawCreditNoteAsync(int creditNoteId, Actor actor,
+                                             CancellationToken ct = default);
 }
 
 /// <summary>
@@ -184,49 +205,154 @@ public sealed class ReceivableService : IReceivableService
         return (RuleResult.Allowed, note);
     }
 
-    public async Task<RuleResult> IssueCreditNoteAsync(int creditNoteId, Actor actor,
-                                                       CancellationToken ct = default)
+    // --- Credit note approval ----------------------------------------------------------------
+    // A credit note can take an invoice to nil, so it goes past the Financial Director like a
+    // purchase order or an invoice does. Approving issues it: there is no approved-but-unissued
+    // state in which the invoice looks credited and is not.
+
+    public async Task<RuleResult> SubmitCreditNoteAsync(int creditNoteId, Actor actor, string? note,
+                                                        CancellationToken ct = default)
     {
-        var note = await _db.CreditNotes
+        var credit = await _db.CreditNotes
             .Include(c => c.Lines)
             .FirstOrDefaultAsync(c => c.Id == creditNoteId, ct);
 
-        if (note is null) return RuleResult.Refuse("That credit note no longer exists.");
+        if (credit is null) return RuleResult.Refuse("That credit note no longer exists.");
 
-        if (note.Status == CreditNoteStatus.Issued)
-            return RuleResult.Refuse("That credit note has already been issued.");
-
-        if (note.Status == CreditNoteStatus.Cancelled)
-            return RuleResult.Refuse("That credit note has been cancelled.");
-
-        if (note.Lines.Count == 0)
-            return RuleResult.Refuse("Add at least one line before issuing this credit note.");
-
-        var invoice = await LoadAsync(note.CustomerInvoiceId, ct);
-        if (invoice is null) return RuleResult.Refuse("That invoice no longer exists.");
-
-        // Re-checked at issue against the credits that exist now. Two drafts raised separately could
-        // each be valid alone and exceed the invoice together, and this is the only moment that
-        // matters - a draft credits nothing.
-        var check = ReceivableMath.CanCredit(note.GrandTotal, invoice.GrandTotal, invoice.CreditedTotal);
+        var check = ApprovalRules.CanSubmitCreditNote(credit.Status, credit.Lines.Count, credit.Reason);
         if (!check.Ok) return check;
 
-        note.CreditNoteNumber = await _numbers.NextAsync(DocumentNumberKind.CreditNote, ct);
-        note.IssueDate = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        note.Status = CreditNoteStatus.Issued;
-        note.IssuedById = actor.Id;
-        note.IssuedByName = actor.Name;
+        _db.Approvals.Add(new Approval
+        {
+            Kind = ApprovalKind.CreditNote,
+            Status = ApprovalStatus.Pending,
+            CreditNoteId = credit.Id,
+            AmountZarAtRequest = credit.GrandTotal,
+            RequestedAt = _clock.GetUtcNow().UtcDateTime,
+            RequestedById = actor.Id,
+            RequestedByName = actor.Name,
+            RequestNote = ApprovalDecision.Trim(note)
+        });
 
-        // Same reasoning as a receipt, and worse here: adding a stand-in CreditNote to the tracked
-        // collection would insert a second, numberless credit note against the same invoice.
-        Restatus(invoice, invoice.CreditedTotal + note.GrandTotal, invoice.ReceivedTotal);
+        credit.Status = CreditNoteStatus.PendingApproval;
 
-        _audit.Record(nameof(CustomerInvoice), invoice.Id.ToString(), "CreditNoteIssued",
-                      newValue: $"{note.CreditNoteNumber} R {note.GrandTotal:N2} by {actor.Name}",
-                      reason: note.Reason);
+        _audit.Record(nameof(CustomerInvoice), credit.CustomerInvoiceId.ToString(),
+                      "CreditNoteSubmitted",
+                      newValue: $"R {credit.GrandTotal:N2} by {actor.Name}", reason: credit.Reason);
 
         await _db.SaveChangesAsync(ct);
         return RuleResult.Allowed;
+    }
+
+    public async Task<RuleResult> ApproveCreditNoteAsync(int approvalId, Actor actor, string? note,
+                                                         CancellationToken ct = default)
+    {
+        var (approval, credit, refusal) = await LoadCreditForDecisionAsync(approvalId, actor, ct);
+        if (refusal is not null) return refusal;
+
+        var allowed = ApprovalRules.CanIssueCreditNote(credit!.Status);
+        if (!allowed.Ok) return allowed;
+
+        var invoice = await LoadAsync(credit.CustomerInvoiceId, ct);
+        if (invoice is null) return RuleResult.Refuse("That invoice no longer exists.");
+
+        // The headroom is checked here, not only when the credit was raised: another credit note
+        // may have been issued against this invoice while this one waited. Refusing before the
+        // decision is recorded means the approval never claims to have allowed an over-credit.
+        var room = ReceivableMath.CanCredit(credit.GrandTotal, invoice.GrandTotal, invoice.CreditedTotal);
+        if (!room.Ok) return room;
+
+        ApprovalDecision.Record(approval!, ApprovalStatus.Approved, actor, note,
+                                _clock.GetUtcNow().UtcDateTime);
+
+        credit.CreditNoteNumber = await _numbers.NextAsync(DocumentNumberKind.CreditNote, ct);
+        credit.IssueDate = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        credit.Status = CreditNoteStatus.Issued;
+        credit.IssuedById = actor.Id;
+        credit.IssuedByName = actor.Name;
+
+        Restatus(invoice, invoice.CreditedTotal + credit.GrandTotal, invoice.ReceivedTotal);
+
+        _audit.Record(nameof(CustomerInvoice), invoice.Id.ToString(), "CreditNoteIssued",
+                      newValue: $"{credit.CreditNoteNumber} R {credit.GrandTotal:N2} approved by {actor.Name}",
+                      reason: credit.Reason);
+
+        // The decision and the issue are one SaveChanges: an approval recorded without the credit
+        // note it authorised, or a credit note issued with no approval behind it, are both worse
+        // than the whole thing failing.
+        await _db.SaveChangesAsync(ct);
+        return RuleResult.Allowed;
+    }
+
+    public async Task<RuleResult> RejectCreditNoteAsync(int approvalId, Actor actor, string reason,
+                                                        CancellationToken ct = default)
+    {
+        var (approval, credit, refusal) = await LoadCreditForDecisionAsync(approvalId, actor, ct, reason);
+        if (refusal is not null) return refusal;
+
+        ApprovalDecision.Record(approval!, ApprovalStatus.Rejected, actor, reason,
+                                _clock.GetUtcNow().UtcDateTime);
+
+        credit!.Status = CreditNoteStatus.Rejected;
+
+        _audit.Record(nameof(CustomerInvoice), credit.CustomerInvoiceId.ToString(),
+                      "CreditNoteRejected",
+                      newValue: $"R {credit.GrandTotal:N2} refused by {actor.Name}",
+                      reason: ApprovalDecision.Trim(reason));
+
+        await _db.SaveChangesAsync(ct);
+        return RuleResult.Allowed;
+    }
+
+    public async Task<RuleResult> WithdrawCreditNoteAsync(int creditNoteId, Actor actor,
+                                                          CancellationToken ct = default)
+    {
+        var credit = await _db.CreditNotes
+            .Include(c => c.Approvals)
+            .FirstOrDefaultAsync(c => c.Id == creditNoteId, ct);
+
+        if (credit is null) return RuleResult.Refuse("That credit note no longer exists.");
+
+        if (credit.Status != CreditNoteStatus.PendingApproval)
+            return RuleResult.Refuse("There is nothing to withdraw on this credit note.");
+
+        if (credit.OpenApproval is { } open)
+            ApprovalDecision.Record(open, ApprovalStatus.Withdrawn, actor, null,
+                                    _clock.GetUtcNow().UtcDateTime);
+
+        // Cancelled rather than back to draft: a credit note carries no edit screen, so a draft
+        // would sit on the invoice forever with nothing anyone could do to it. Raise a new one.
+        credit.Status = CreditNoteStatus.Cancelled;
+
+        _audit.Record(nameof(CustomerInvoice), credit.CustomerInvoiceId.ToString(),
+                      "CreditNoteWithdrawn",
+                      newValue: $"R {credit.GrandTotal:N2} withdrawn by {actor.Name}");
+
+        await _db.SaveChangesAsync(ct);
+        return RuleResult.Allowed;
+    }
+
+    private async Task<(Approval?, CreditNote?, RuleResult?)> LoadCreditForDecisionAsync(
+        int approvalId, Actor actor, CancellationToken ct, string? rejectionReason = null)
+    {
+        var approval = await _db.Approvals.FirstOrDefaultAsync(a => a.Id == approvalId, ct);
+
+        if (approval?.CreditNoteId is not int creditNoteId)
+            return (null, null, RuleResult.Refuse("That approval request no longer exists."));
+
+        var check = rejectionReason is null
+            ? ApprovalRules.CanDecide(approval.Status, approval.RequestedById, actor.Id)
+            : ApprovalRules.CanReject(approval.Status, approval.RequestedById, actor.Id, rejectionReason);
+
+        if (!check.Ok) return (null, null, check);
+
+        var credit = await _db.CreditNotes
+            .Include(c => c.Lines)
+            .FirstOrDefaultAsync(c => c.Id == creditNoteId, ct);
+
+        return credit is null
+            ? (null, null, RuleResult.Refuse("That credit note no longer exists."))
+            : (approval, credit, null);
     }
 
     /// <summary>A credit note's reason has to be actionable, like a rejection's.</summary>

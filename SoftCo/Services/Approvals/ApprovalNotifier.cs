@@ -50,6 +50,17 @@ public interface IApprovalNotifier
     /// </summary>
     Task NotifyInvoiceSubmitterAsync(Approval approval, CustomerInvoice invoice, string? link,
                                      CancellationToken ct = default);
+
+    /// <summary>
+    /// Tells everyone who may approve that a credit note is waiting, with what it would do to the
+    /// invoice behind it.
+    /// </summary>
+    Task NotifyCreditNoteApproversAsync(Approval approval, CreditNote credit, string? link,
+                                        CancellationToken ct = default);
+
+    /// <summary>Tells the person who raised a credit note what was decided.</summary>
+    Task NotifyCreditNoteSubmitterAsync(Approval approval, CreditNote credit, string? link,
+                                        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -241,6 +252,82 @@ public sealed class ApprovalNotifier : IApprovalNotifier
             {(approved
                 ? "You can now issue it. Issuing allocates the invoice number and fixes the document - after that it can only be corrected with a credit note."
                 : "Nothing has been issued. Deal with the reason above and send it for approval again.")}
+
+            {(link is null ? "" : $"Full record: {link}")}
+            """;
+
+        await SendAsync(approval, new EmailMessage(submitter.Email, DisplayName(submitter), subject, body, []), ct);
+    }
+
+    public async Task NotifyCreditNoteApproversAsync(Approval approval, CreditNote credit,
+                                                      string? link, CancellationToken ct = default)
+    {
+        var approvers = await ActiveApproversAsync(approval.RequestedById, ct);
+
+        if (approvers.Recipients.Count == 0)
+        {
+            approval.NotificationSent = false;
+            approval.NotificationError = NobodyToNotify("credit note", approvers.OnlySubmitterCould);
+            return;
+        }
+
+        var invoice = credit.CustomerInvoice;
+        var alreadyCredited = invoice?.CreditedTotal ?? 0m;
+        var subject = $"Credit note approval needed - {invoice?.Client?.Name} - R {credit.GrandTotal:N2}";
+
+        foreach (var approver in approvers.Recipients)
+        {
+            var body = $"""
+                Hi {DisplayName(approver)},
+
+                {approval.RequestedByName ?? "A member of staff"} has asked you to approve a credit
+                note against an issued invoice.
+
+                Client         {invoice?.Client?.Name}
+                Invoice        {invoice?.InvoiceNumber ?? "-"}
+                Invoiced       R {invoice?.GrandTotal:N2}
+                Already credited   R {alreadyCredited:N2}
+
+                This credit    R {credit.GrandTotal:N2}
+                Reason         {credit.Reason}
+                {(string.IsNullOrWhiteSpace(approval.RequestNote) ? "" : $"Note           {approval.RequestNote}\n")}
+                Nothing is credited until you approve. Approving issues the credit note, allocates
+                its number and reduces what the client owes by the amount above.
+
+                {(link is null ? "" : $"Approve or reject: {link}")}
+                """;
+
+            await SendAsync(approval, new EmailMessage(approver.Email!, DisplayName(approver),
+                                                       subject, body, []), ct);
+        }
+
+        approval.NotifiedTo = string.Join(", ", approvers.Recipients.Select(a => a.Email));
+    }
+
+    public async Task NotifyCreditNoteSubmitterAsync(Approval approval, CreditNote credit,
+                                                      string? link, CancellationToken ct = default)
+    {
+        var submitter = await SubmitterAsync(approval, ct);
+        if (submitter?.Email is not { Length: > 0 }) return;
+
+        var approved = approval.Status == ApprovalStatus.Approved;
+        var invoice = credit.CustomerInvoice;
+        var subject = $"Credit note {(approved ? "approved" : "rejected")} - {invoice?.Client?.Name} - R {credit.GrandTotal:N2}";
+
+        var body = $"""
+            Hi {DisplayName(submitter)},
+
+            The credit note against {invoice?.InvoiceNumber ?? "that invoice"} has been
+            {(approved ? "approved" : "rejected")} by {approval.DecidedByName ?? "an approver"}.
+
+            Client         {invoice?.Client?.Name}
+            Amount         R {credit.GrandTotal:N2}
+            Decided        {approval.DecidedAt?.ToLocalTime():dd MMM yyyy HH:mm}
+
+            {(string.IsNullOrWhiteSpace(approval.DecisionReason) ? "" : $"Reason         {approval.DecisionReason}\n")}
+            {(approved
+                ? $"It has been issued as {credit.CreditNoteNumber} and the client's balance has come down by that amount."
+                : "Nothing has been credited and the invoice is unchanged. Raise a new credit note if it is still needed.")}
 
             {(link is null ? "" : $"Full record: {link}")}
             """;

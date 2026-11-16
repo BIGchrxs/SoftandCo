@@ -82,6 +82,8 @@ public static class EnumLabels
         CreditNoteStatus.Draft => "Draft",
         CreditNoteStatus.Issued => "Issued",
         CreditNoteStatus.Cancelled => "Cancelled",
+        CreditNoteStatus.PendingApproval => "Awaiting FD approval",
+        CreditNoteStatus.Rejected => "Rejected",
         _ => s.ToString()
     };
 
@@ -131,6 +133,7 @@ public static class EnumLabels
         ApprovalKind.PurchaseOrder => "Purchase order",
         ApprovalKind.PaymentRelease => "Payment release",
         ApprovalKind.CustomerInvoice => "Client invoice",
+        ApprovalKind.CreditNote => "Credit note",
         _ => k.ToString()
     };
 

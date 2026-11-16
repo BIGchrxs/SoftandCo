@@ -78,12 +78,10 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         b.Entity<Approval>(e =>
         {
             // Exactly one subject, enforced by the database rather than by trusting every caller.
-            // CustomerInvoiceId has no foreign key yet - the table arrives in Phase 6 - but the
-            // column and this constraint exist now, so adding it later does not mean revalidating
-            // every row against a rewritten constraint.
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_Approvals_OneSubject",
-                "num_nonnulls(\"SupplierOrderId\", \"PaymentRequestId\", \"CustomerInvoiceId\") = 1"));
+                "num_nonnulls(\"SupplierOrderId\", \"PaymentRequestId\", \"CustomerInvoiceId\", " +
+                "\"CreditNoteId\") = 1"));
 
             e.HasOne(x => x.SupplierOrder)
              .WithMany(o => o.Approvals)
@@ -103,6 +101,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             e.HasOne(x => x.CustomerInvoice)
              .WithMany(i => i.Approvals)
              .HasForeignKey(x => x.CustomerInvoiceId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.CreditNote)
+             .WithMany(c => c.Approvals)
+             .HasForeignKey(x => x.CreditNoteId)
              .OnDelete(DeleteBehavior.Restrict);
 
             // The Financial Director's queue: open requests, newest first, by kind.

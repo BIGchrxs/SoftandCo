@@ -25,17 +25,20 @@ public class ApprovalsController : Controller
     private readonly IPurchaseOrderApprovalService _approvals;
     private readonly IPaymentReleaseService _releases;
     private readonly ICustomerInvoiceService _invoices;
+    private readonly IReceivableService _receivables;
     private readonly IApprovalNotifier _notifier;
     private readonly UserManager<ApplicationUser> _users;
 
     public ApprovalsController(AppDbContext db, IPurchaseOrderApprovalService approvals,
                                IPaymentReleaseService releases, ICustomerInvoiceService invoices,
-                               IApprovalNotifier notifier, UserManager<ApplicationUser> users)
+                               IReceivableService receivables, IApprovalNotifier notifier,
+                               UserManager<ApplicationUser> users)
     {
         _db = db;
         _approvals = approvals;
         _releases = releases;
         _invoices = invoices;
+        _receivables = receivables;
         _notifier = notifier;
         _users = users;
     }
@@ -78,15 +81,19 @@ public class ApprovalsController : Controller
                     ? (a.SupplierOrder.PoNumber ?? "(not numbered)")
                     : a.PaymentRequest != null
                         ? (a.PaymentRequest.SupplierOrder!.PoNumber ?? "(not numbered)")
-                        // An invoice has no number until it is issued, which is the whole point of
-                        // the decision being asked for. Saying "not yet issued" rather than "draft"
-                        // keeps it from reading as a contradiction beside an Approved badge.
-                        : (a.CustomerInvoice!.InvoiceNumber ?? "Invoice - not yet issued"),
+                        // Neither an invoice nor a credit note has a number until it is issued,
+                        // which is the whole point of the decision being asked for. Saying "not yet
+                        // issued" keeps it from reading as a contradiction beside an Approved badge.
+                        : a.CreditNote != null
+                            ? $"Credit against {a.CreditNote.CustomerInvoice!.InvoiceNumber ?? "a draft invoice"}"
+                            : (a.CustomerInvoice!.InvoiceNumber ?? "Invoice - not yet issued"),
                 SupplierName = a.SupplierOrder != null
                     ? a.SupplierOrder.Supplier!.Name
                     : a.PaymentRequest != null
                         ? a.PaymentRequest.SupplierOrder!.Supplier!.Name
-                        : a.CustomerInvoice!.Client!.Name,
+                        : a.CreditNote != null
+                            ? a.CreditNote.CustomerInvoice!.Client!.Name
+                            : a.CustomerInvoice!.Client!.Name,
                 AmountZar = a.AmountZarAtRequest,
                 RequestedAt = a.RequestedAt,
                 RequestedByName = a.RequestedByName,
@@ -94,8 +101,12 @@ public class ApprovalsController : Controller
                 DecidedByName = a.DecidedByName,
                 OrderId = a.SupplierOrderId
                     ?? (a.PaymentRequest != null ? a.PaymentRequest.SupplierOrderId : (int?)null),
-                InvoiceId = a.CustomerInvoiceId,
-                InvoiceStatus = a.CustomerInvoice != null ? a.CustomerInvoice.Status : null
+                // A credit note has no page of its own; it is shown on the invoice it reverses, so
+                // that is where the queue links to.
+                InvoiceId = a.CustomerInvoiceId
+                    ?? (a.CreditNote != null ? a.CreditNote.CustomerInvoiceId : (int?)null),
+                InvoiceStatus = a.CustomerInvoice != null ? a.CustomerInvoice.Status : null,
+                CreditNoteStatus = a.CreditNote != null ? a.CreditNote.Status : null
             })
             .ToListAsync();
 
@@ -124,6 +135,7 @@ public class ApprovalsController : Controller
         {
             ApprovalKind.PaymentRelease => await _releases.ApproveAsync(id, Me, note, ct),
             ApprovalKind.CustomerInvoice => await _invoices.ApproveAsync(id, Me, note, ct),
+            ApprovalKind.CreditNote => await _receivables.ApproveCreditNoteAsync(id, Me, note, ct),
             _ => await _approvals.ApproveAsync(id, Me, note, ct)
         };
 
@@ -143,6 +155,7 @@ public class ApprovalsController : Controller
         {
             ApprovalKind.PaymentRelease => await _releases.RejectAsync(id, Me, reason, ct),
             ApprovalKind.CustomerInvoice => await _invoices.RejectAsync(id, Me, reason, ct),
+            ApprovalKind.CreditNote => await _receivables.RejectCreditNoteAsync(id, Me, reason, ct),
             _ => await _approvals.RejectAsync(id, Me, reason, ct)
         };
 
@@ -239,6 +252,23 @@ public class ApprovalsController : Controller
             return;
         }
 
+        if (approval.CreditNoteId is int creditNoteId)
+        {
+            var credit = await _db.CreditNotes
+                .Include(c => c.CustomerInvoice).ThenInclude(i => i!.Client)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(c => c.Id == creditNoteId, ct);
+
+            if (credit?.CustomerInvoice is null) return;
+
+            var creditLink = Url.Action("Details", "CustomerInvoices",
+                                        new { id = credit.CustomerInvoiceId }, Request.Scheme);
+
+            await _notifier.NotifyCreditNoteSubmitterAsync(approval, credit, creditLink, ct);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
         if (approval.CustomerInvoiceId is int invoiceId)
         {
             var invoice = await _db.CustomerInvoices
@@ -298,6 +328,35 @@ public class ApprovalsController : Controller
                 .FirstOrDefaultAsync(r => r.Id == requestId);
 
             if (request is null) return null;
+        }
+
+        // A credit note is shown with the invoice it reverses and what is left to credit on it:
+        // the decision is meaningless without knowing what was charged in the first place.
+        if (approval.CreditNoteId is int creditNoteId)
+        {
+            var credit = await _db.CreditNotes.AsNoTracking()
+                .Include(c => c.Lines)
+                .Include(c => c.CustomerInvoice).ThenInclude(i => i!.Client)
+                .Include(c => c.CustomerInvoice).ThenInclude(i => i!.Project)
+                .Include(c => c.CustomerInvoice).ThenInclude(i => i!.CreditNotes)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(c => c.Id == creditNoteId);
+
+            if (credit?.CustomerInvoice is null) return null;
+
+            var creditDecision = ApprovalRules.CanDecide(approval.Status, approval.RequestedById,
+                                                         _users.GetUserId(User));
+
+            return new ApprovalReviewViewModel
+            {
+                Approval = approval,
+                CreditNote = credit,
+                Invoice = credit.CustomerInvoice,
+                Projects = credit.CustomerInvoice.Project?.Name ?? "",
+                CanDecide = creditDecision.Ok,
+                WhyNot = creditDecision.Message,
+                MinimumReasonLength = ApprovalRules.MinimumRejectionReasonLength
+            };
         }
 
         // A client invoice has no supplier order behind it at all, so it gets its own screen state

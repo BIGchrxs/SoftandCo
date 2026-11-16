@@ -368,6 +368,70 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
     Check(!ApprovalRules.CanRelease(PaymentReleaseStatus.Withdrawn, 1000m, 1000m).Ok,
           "A withdrawn release is not sent");
 
+    // --- Credit notes go past the Financial Director too ---
+    // Anyone with edit rights could credit an invoice to nil without an approver seeing it, which
+    // made the credit note the one way to wipe out revenue unsupervised.
+    var why = "Two chairs returned, wrong size";
+
+    Check(ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Draft, 1, why).Ok,
+          "A drafted credit note with a reason can be sent for approval");
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.PendingApproval, 1, why).Ok,
+          "A credit note already waiting is not sent twice");
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Issued, 1, why).Ok,
+          "An issued credit note cannot be sent for approval after the fact");
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Cancelled, 1, why).Ok,
+          "A cancelled credit note is not resurrected by submitting it");
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Draft, 0, why).Ok,
+          "A credit note with no lines credits nothing and cannot be decided");
+
+    // The reason is the only thing the approver has to judge by.
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Draft, 1, null).Ok,
+          "A credit note with no reason cannot be sent");
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Draft, 1, "   ").Ok,
+          "Whitespace is not a reason");
+    Check(!ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Draft, 1, "wrong").Ok,
+          "Nor is one word");
+    Check(ApprovalRules.CanSubmitCreditNote(CreditNoteStatus.Draft, 1, "wrong size").Ok,
+          "Ten characters is the floor, as it is for a rejection");
+
+    // Approving a credit note issues it, so the gate is on being asked rather than on a separate
+    // approved state - there is no approved-but-unissued credit note.
+    Check(ApprovalRules.CanIssueCreditNote(CreditNoteStatus.PendingApproval).Ok,
+          "A credit note awaiting a decision can be issued by approving it");
+    Check(!ApprovalRules.CanIssueCreditNote(CreditNoteStatus.Draft).Ok,
+          "A credit note nobody has submitted is not issued");
+    Check(!ApprovalRules.CanIssueCreditNote(CreditNoteStatus.Issued).Ok,
+          "A credit note is not issued twice");
+    Check(!ApprovalRules.CanIssueCreditNote(CreditNoteStatus.Cancelled).Ok,
+          "A cancelled credit note is not issued");
+    Check(!ApprovalRules.CanIssueCreditNote(CreditNoteStatus.Rejected).Ok,
+          "A refused credit note is not issued");
+
+    // The same rule that stops self-approval everywhere else has to cover this kind too.
+    Check(!ApprovalRules.CanDecide(ApprovalStatus.Pending, "user-1", "user-1").Ok,
+          "Nobody approves their own credit note");
+
+    // Statuses are stored as integers, so the values must never shift.
+    Check((int)CreditNoteStatus.Draft == 0 && (int)CreditNoteStatus.Issued == 1
+          && (int)CreditNoteStatus.Cancelled == 2 && (int)CreditNoteStatus.PendingApproval == 3
+          && (int)CreditNoteStatus.Rejected == 4, "Credit note status values are stable");
+    Check((int)ApprovalKind.CreditNote == 3, "The credit note approval kind is appended, not renumbered");
+    Check(ApprovalKind.CreditNote.Label() == "Credit note", "The new kind has a label of its own");
+
+    // Only an issued credit note has done anything to the receivable.
+    {
+        var pending = new CreditNote { Status = CreditNoteStatus.PendingApproval, GrandTotal = 500m };
+        var issued = new CreditNote { Status = CreditNoteStatus.Issued, GrandTotal = 500m };
+        Check(!pending.IsIssued, "A credit note waiting on approval is not issued");
+        Check(issued.IsIssued, "An approved one is");
+
+        var invoice = new CustomerInvoice { GrandTotal = 1000m };
+        invoice.CreditNotes.Add(pending);
+        Check(invoice.CreditedTotal == 0m, "A pending credit note reduces nothing");
+        invoice.CreditNotes.Add(issued);
+        Check(invoice.CreditedTotal == 500m, "and an issued one reduces by its total");
+    }
+
     Check(ApprovalRules.CanWithdrawRelease(PaymentReleaseStatus.PendingApproval).Ok,
           "A waiting release can be withdrawn");
     Check(!ApprovalRules.CanWithdrawRelease(PaymentReleaseStatus.Approved).Ok,

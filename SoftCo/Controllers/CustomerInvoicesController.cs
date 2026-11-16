@@ -349,13 +349,47 @@ public class CustomerInvoicesController : Controller
             return RedirectToAction(nameof(Details), new { id });
         }
 
-        // Drafted and issued in one action. A separate draft step would be a screen staff pass
-        // through without reading; the cap is enforced at both points regardless.
-        var issued = await _receivables.IssueCreditNoteAsync(note.Id, Me, ct);
+        // Drafted and submitted in one action: a separate draft step would be a screen staff pass
+        // through without reading. What it is no longer allowed to do is issue itself - a credit
+        // note can take an invoice to nil, so the Financial Director decides.
+        var submitted = await _receivables.SubmitCreditNoteAsync(note.Id, Me, null, ct);
 
-        TempData["Flash"] = issued.Ok
-            ? $"Credit note issued for R {note.GrandTotal:N2}."
-            : issued.Message;
+        if (!submitted.Ok)
+        {
+            TempData["Flash"] = submitted.Message;
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var approval = await _db.Approvals
+            .Where(a => a.CreditNoteId == note.Id && a.Status == ApprovalStatus.Pending)
+            .OrderByDescending(a => a.RequestedAt)
+            .FirstOrDefaultAsync(ct);
+
+        var raised = $"Credit note for R {note.GrandTotal:N2} sent for approval. " +
+                     "Nothing is credited until it is approved.";
+
+        if (approval is null)
+        {
+            TempData["Flash"] = raised;
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        var link = Url.Action("Review", "Approvals", new { id = approval.Id }, Request.Scheme);
+
+        // The notifier reads the invoice off the note for the client name and what is already
+        // credited, and the note was loaded without it.
+        note.CustomerInvoice = await _db.CustomerInvoices
+            .Include(i => i.Client)
+            .Include(i => i.CreditNotes)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(i => i.Id == id, ct);
+
+        await _notifier.NotifyCreditNoteApproversAsync(approval, note, link, ct);
+        await _db.SaveChangesAsync(ct);
+
+        TempData["Flash"] = approval.NotificationSent
+            ? $"{raised} {approval.NotifiedTo} has been emailed."
+            : approval.NotificationError ?? raised;
 
         return RedirectToAction(nameof(Details), new { id });
     }
