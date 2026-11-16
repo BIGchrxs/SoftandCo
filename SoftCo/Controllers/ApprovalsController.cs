@@ -239,6 +239,23 @@ public class ApprovalsController : Controller
             return;
         }
 
+        if (approval.CustomerInvoiceId is int invoiceId)
+        {
+            var invoice = await _db.CustomerInvoices
+                .Include(i => i.Client)
+                .Include(i => i.Project)
+                .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+
+            if (invoice is null) return;
+
+            var invoiceLink = Url.Action("Details", "CustomerInvoices",
+                                         new { id = invoiceId }, Request.Scheme);
+
+            await _notifier.NotifyInvoiceSubmitterAsync(approval, invoice, invoiceLink, ct);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
         if (approval.SupplierOrderId is not int orderId) return;
 
         var order = await LoadOrderAsync(orderId, ct);
