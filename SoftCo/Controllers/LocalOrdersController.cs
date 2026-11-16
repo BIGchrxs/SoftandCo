@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SoftCo.Data;
 using SoftCo.Models;
 using SoftCo.Services;
+using SoftCo.Services.Reporting;
 using SoftCo.ViewModels;
 
 namespace SoftCo.Controllers;
@@ -97,6 +98,14 @@ public class LocalOrdersController : Controller
         foreach (var pid in vm.ProjectIds.Distinct())
             order.OrderProjects.Add(new OrderProject { ProjectId = pid });
 
+        if (!OrderAllocation.Apply(order.OrderProjects, vm.ProjectShares, out var shareError))
+        {
+            ModelState.AddModelError(nameof(vm.ProjectIds), shareError!);
+            vm.AllSuppliers = await OrderQueries.SupplierOptions(_db);
+            vm.AllProjects = await OrderQueries.ProjectOptions(_db);
+            return View("Edit", vm);
+        }
+
         _db.SupplierOrders.Add(order);
         await _db.SaveChangesAsync();
 
@@ -177,6 +186,14 @@ public class LocalOrdersController : Controller
             order.OrderProjects.Remove(gone);
         foreach (var pid in wanted.Where(p => order.OrderProjects.All(op => op.ProjectId != p)))
             order.OrderProjects.Add(new OrderProject { ProjectId = pid });
+
+        if (!OrderAllocation.Apply(order.OrderProjects, vm.ProjectShares, out var shareError))
+        {
+            ModelState.AddModelError(nameof(vm.ProjectIds), shareError!);
+            vm.AllSuppliers = await OrderQueries.SupplierOptions(_db);
+            vm.AllProjects = await OrderQueries.ProjectOptions(_db);
+            return View(vm);
+        }
 
         await _db.SaveChangesAsync();
 

@@ -186,6 +186,14 @@ public class OrdersController : Controller
         foreach (var pid in vm.ProjectIds.Distinct())
             order.OrderProjects.Add(new OrderProject { ProjectId = pid });
 
+        if (!OrderAllocation.Apply(order.OrderProjects, vm.ProjectShares, out var shareError))
+        {
+            ModelState.AddModelError(nameof(vm.ProjectIds), shareError!);
+            vm.AllSuppliers = await OrderQueries.SupplierOptions(_db);
+            vm.AllProjects = await OrderQueries.ProjectOptions(_db);
+            return View("Edit", vm);
+        }
+
         _db.SupplierOrders.Add(order);
         await _db.SaveChangesAsync();
 
@@ -280,7 +288,7 @@ public class OrdersController : Controller
         foreach (var pid in wanted.Where(p => order.OrderProjects.All(op => op.ProjectId != p)))
             order.OrderProjects.Add(new OrderProject { ProjectId = pid });
 
-        if (!ApplyShares(order, vm, out var shareError))
+        if (!OrderAllocation.Apply(order.OrderProjects, vm.ProjectShares, out var shareError))
         {
             ModelState.AddModelError(nameof(vm.ProjectIds), shareError!);
             vm.AllSuppliers = await OrderQueries.SupplierOptions(_db);
@@ -301,52 +309,6 @@ public class OrdersController : Controller
             ? "Order updated. It had already been approved, so it has been returned to draft and needs approving again."
             : "Order updated.";
         return RedirectToAction(nameof(Details), new { id = order.Id });
-    }
-
-    /// <summary>
-    /// Writes the allocation shares onto an order's project links.
-    ///
-    /// One project takes the whole cost, and no question is asked - that is most orders. Several
-    /// projects with nothing entered get an even split that sums to exactly 1, which is a defensible
-    /// starting point rather than a guess dressed up as a decision. Several projects with shares
-    /// entered must add up, because an order whose shares sum to 1.2 inflates the cost base of every
-    /// project it touches and there is nothing downstream that would catch it.
-    /// </summary>
-    private static bool ApplyShares(SupplierOrder order, OrderEditViewModel vm, out string? error)
-    {
-        error = null;
-        var links = order.OrderProjects.OrderBy(op => op.ProjectId).ToList();
-
-        if (links.Count == 0) return true;
-
-        if (links.Count == 1)
-        {
-            links[0].AllocationShare = 1m;
-            return true;
-        }
-
-        var entered = links
-            .Select(op => vm.ProjectShares.TryGetValue(op.ProjectId, out var pct) ? pct / 100m : (decimal?)null)
-            .ToList();
-
-        if (entered.Any(e => e is null))
-        {
-            var even = GrossProfitMath.EvenSplit(links.Count);
-            for (var i = 0; i < links.Count; i++) links[i].AllocationShare = even[i];
-            return true;
-        }
-
-        var shares = entered.Select(e => Math.Round(e!.Value, GrossProfitMath.ShareDecimals,
-                                                    MidpointRounding.AwayFromZero)).ToList();
-
-        if (!GrossProfitMath.SharesAreValid(shares))
-        {
-            error = $"The project shares add up to {shares.Sum() * 100m:0.##}%. They have to come to 100%.";
-            return false;
-        }
-
-        for (var i = 0; i < links.Count; i++) links[i].AllocationShare = shares[i];
-        return true;
     }
 
     // The dev-only Delete action was removed. It was a GET with no antiforgery token and no role

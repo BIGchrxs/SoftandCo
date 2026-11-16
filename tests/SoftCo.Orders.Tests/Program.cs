@@ -614,4 +614,84 @@ Check(Accepts(null) && Accepts("") && Accepts("   "), "Empty values left to [Req
     Check(GrossProfitMath.MarginPercent(3m, 1m) == 33.33m, "Margin is rounded to two places");
 }
 
+
+// --- Writing allocation shares onto an order --------------------------------------------
+// Every save path has to go through this. Three of the four did not, so a multi-project order
+// left every link at the model default of 1 - the full cost counted into each project.
+{
+    static List<OrderProject> Links(params int[] projectIds) =>
+        projectIds.Select(id => new OrderProject { ProjectId = id }).ToList();
+
+    static Dictionary<int, decimal?> Pct(params (int Id, decimal? Percent)[] entries) =>
+        entries.ToDictionary(e => e.Id, e => e.Percent);
+
+    // One project, whatever the form says. The share box is hidden in that case, so a stale or
+    // tampered value must not be able to give a single-project order anything but the whole cost.
+    {
+        var links = Links(7);
+        Check(OrderAllocation.Apply(links, Pct((7, 40m)), out _), "A single-project order saves");
+        Check(links[0].AllocationShare == 1m, "and takes the whole cost regardless of what was posted");
+    }
+
+    // Nothing entered: an even split, not the 1-each default that caused the double-count.
+    {
+        var links = Links(3, 1, 2);
+        Check(OrderAllocation.Apply(links, Pct(), out _), "Three projects with nothing entered save");
+        Check(links.Sum(l => l.AllocationShare) == 1m, "and their shares sum to exactly 1");
+        Check(links.All(l => l.AllocationShare != 1m), "No link keeps the whole cost");
+    }
+
+    // The remainder lands on the highest project id, because the links are ordered before the
+    // split is applied. Without that ordering the same order could round differently per save.
+    {
+        var links = Links(9, 4, 6);
+        OrderAllocation.Apply(links, Pct(), out _);
+        Check(links.Single(l => l.ProjectId == 9).AllocationShare == 0.333334m,
+              "The remainder lands on the last link by project id");
+    }
+
+    // Hand-entered shares, as percentages off the form.
+    {
+        var links = Links(1, 2);
+        Check(OrderAllocation.Apply(links, Pct((1, 70m), (2, 30m)), out _), "70/30 is accepted");
+        Check(links.Single(l => l.ProjectId == 1).AllocationShare == 0.7m, "and 70% is stored as 0.7");
+    }
+
+    // Four decimal places on the form, six in the column: 33.3333% three times must still save.
+    {
+        var links = Links(1, 2, 3);
+        Check(OrderAllocation.Apply(links, Pct((1, 33.3333m), (2, 33.3333m), (3, 33.3334m)), out _),
+              "Shares round-tripped through the form at four places still save");
+    }
+
+    // Shares that do not add up are refused with a message rather than silently normalised.
+    {
+        var links = Links(1, 2);
+        Check(!OrderAllocation.Apply(links, Pct((1, 70m), (2, 20m)), out var error), "90% is refused");
+        Check(error is not null && error.Contains("90"), "and the message quotes the total entered");
+        Check(links.All(l => l.AllocationShare == 1m), "A refused save leaves the links untouched");
+
+        Check(!OrderAllocation.Apply(Links(1, 2), Pct((1, 70m), (2, 40m)), out _), "110% is refused");
+        Check(!OrderAllocation.Apply(Links(1, 2), Pct((1, 150m), (2, -50m)), out _),
+              "A negative share is refused even though the sum works");
+    }
+
+    // A partially filled form falls back to even rather than treating a blank as zero, which
+    // would hand the whole cost to whichever project happened to be filled in.
+    {
+        var links = Links(1, 2);
+        Check(OrderAllocation.Apply(links, Pct((1, 60m)), out _), "A half-filled form saves");
+        Check(links.Sum(l => l.AllocationShare) == 1m, "as an even split summing to 1");
+        Check(links[0].AllocationShare == 0.5m, "ignoring the one value that was entered");
+
+        var withNull = Links(1, 2);
+        Check(OrderAllocation.Apply(withNull, Pct((1, 60m), (2, null)), out _), "An explicit blank saves");
+        Check(withNull.Sum(l => l.AllocationShare) == 1m, "and also falls back to even");
+    }
+
+    // An order with no projects is legal - most of the register predates the client work - and
+    // must not be refused by a rule about splitting cost between projects it does not have.
+    Check(OrderAllocation.Apply(Links(), Pct(), out _), "An order with no projects saves");
+}
+
 Console.WriteLine($"All {passed} checks passed.");
