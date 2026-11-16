@@ -10,7 +10,7 @@ namespace SoftCo.Services.Approvals;
 public interface IApprovalNotifier
 {
     /// <summary>
-    /// Tells the Financial Director there is something waiting, with the purchase order attached.
+    /// Tells everyone who may approve there is something waiting, with the purchase order attached.
     /// Records the outcome on the approval either way and never throws - a notification that fails
     /// must not undo a submission that succeeded.
     /// </summary>
@@ -18,14 +18,14 @@ public interface IApprovalNotifier
                               CancellationToken ct = default);
 
     /// <summary>
-    /// Tells the Financial Director a payment release is waiting. No attachment: the decision is
+    /// Tells everyone who may approve a payment release is waiting. No attachment: the decision is
     /// about an amount against an invoice already on the record, and the link goes straight to it.
     /// </summary>
     Task NotifyPaymentApproversAsync(Approval approval, PaymentRequest request, string? link,
                                      CancellationToken ct = default);
 
     /// <summary>
-    /// Tells the Financial Director a client invoice is waiting to be approved before it is issued.
+    /// Tells everyone who may approve a client invoice is waiting to be approved before it is issued.
     /// </summary>
     Task NotifyInvoiceApproversAsync(Approval approval, string? link, CancellationToken ct = default);
 
@@ -40,6 +40,15 @@ public interface IApprovalNotifier
     /// they do is send the request by hand - which is the behaviour this whole workflow replaces.
     /// </summary>
     Task NotifyPaymentSubmitterAsync(Approval approval, PaymentRequest request, string? link,
+                                     CancellationToken ct = default);
+
+    /// <summary>
+    /// Tells the person who submitted a client invoice what was decided.
+    ///
+    /// The one direction that was missing: invoices were the only kind whose submitter learned
+    /// nothing, so an approved invoice sat unissued until somebody thought to check the queue.
+    /// </summary>
+    Task NotifyInvoiceSubmitterAsync(Approval approval, CustomerInvoice invoice, string? link,
                                      CancellationToken ct = default);
 }
 
@@ -113,7 +122,7 @@ public sealed class ApprovalNotifier : IApprovalNotifier
         var body = $"""
             Hi {DisplayName(submitter)},
 
-            {order.PoNumber} has been {outcome} by {approval.DecidedByName ?? "the Financial Director"}.
+            {order.PoNumber} has been {outcome} by {approval.DecidedByName ?? "an approver"}.
 
             Supplier       {order.Supplier?.Name}
             Value          R {approval.AmountZarAtRequest:N2}
@@ -189,7 +198,7 @@ public sealed class ApprovalNotifier : IApprovalNotifier
             Hi {DisplayName(submitter)},
 
             The payment release for {order?.PoNumber} has been {(approved ? "approved" : "rejected")}
-            by {approval.DecidedByName ?? "the Financial Director"}.
+            by {approval.DecidedByName ?? "an approver"}.
 
             Supplier       {order?.Supplier?.Name}
             Pay to         {request.PaymentContact?.Name}
@@ -200,6 +209,38 @@ public sealed class ApprovalNotifier : IApprovalNotifier
             {(approved
                 ? "Open the order and release it to send the request to the payment contact. Nothing has gone to them yet."
                 : "Nothing has been sent. Deal with the reason above and raise it again if it still needs paying.")}
+
+            {(link is null ? "" : $"Full record: {link}")}
+            """;
+
+        await SendAsync(approval, new EmailMessage(submitter.Email, DisplayName(submitter), subject, body, []), ct);
+    }
+
+    public async Task NotifyInvoiceSubmitterAsync(Approval approval, CustomerInvoice invoice,
+                                                  string? link, CancellationToken ct = default)
+    {
+        var submitter = await SubmitterAsync(approval, ct);
+        if (submitter?.Email is not { Length: > 0 }) return;
+
+        var approved = approval.Status == ApprovalStatus.Approved;
+        var subject = $"Invoice {(approved ? "approved" : "rejected")} - {invoice.Client?.Name} - R {invoice.GrandTotal:N2}";
+
+        var body = $"""
+            Hi {DisplayName(submitter)},
+
+            The invoice for {invoice.Client?.Name} has been {(approved ? "approved" : "rejected")}
+            by {approval.DecidedByName ?? "an approver"}.
+
+            Client         {invoice.Client?.Name}
+            Project        {invoice.Project?.Name ?? "-"}
+            Your ref       {invoice.ClientReference ?? "-"}
+            Total          R {invoice.GrandTotal:N2}
+            Decided        {approval.DecidedAt?.ToLocalTime():dd MMM yyyy HH:mm}
+
+            {(string.IsNullOrWhiteSpace(approval.DecisionReason) ? "" : $"Reason         {approval.DecisionReason}\n")}
+            {(approved
+                ? "You can now issue it. Issuing allocates the invoice number and fixes the document - after that it can only be corrected with a credit note."
+                : "Nothing has been issued. Deal with the reason above and send it for approval again.")}
 
             {(link is null ? "" : $"Full record: {link}")}
             """;
